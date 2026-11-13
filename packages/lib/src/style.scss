@@ -1,84 +1,315 @@
 // packages/lib/src/style.scss
 .react-ubb {
-  --ubb-border: #d9d9d9;
-  --ubb-bg: #fff;
-  --ubb-fg: #333;
-  --ubb-toolbar-bg: #fafafa;
-  --ubb-warn: #d46b08;
+  // design tokens
+  --ubb-accent: #1677ff;
+  --ubb-accent-soft: rgba(22, 119, 255, 0.1);
+  --ubb-accent-ring: rgba(22, 119, 255, 0.28);
+  --ubb-border: #e3e4e8;
+  --ubb-border-strong: #cfd1d7;
+  --ubb-bg: #ffffff;
+  --ubb-fg: #23272e;
+  --ubb-fg-muted: #676e7a;
+  --ubb-toolbar-bg: linear-gradient(180deg, #fafbfc, #f3f4f6);
+  --ubb-hover: rgba(23, 26, 33, 0.05);
+  --ubb-field-bg: #ffffff;
+  --ubb-warn-fg: #c05f07;
+  --ubb-warn-bg: #fff7e8;
+  --ubb-warn-border: #ffdfae;
+  --ubb-slot-bg: rgba(23, 26, 33, 0.045);
+  --ubb-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --ubb-shadow-lg: 0 10px 32px rgba(16, 24, 40, 0.16), 0 2px 8px rgba(16, 24, 40, 0.08);
+  --ubb-radius: 8px;
+  --ubb-ease: 0.15s ease;
+
   display: flex;
   flex-direction: column;
   border: 1px solid var(--ubb-border);
-  border-radius: 6px;
+  border-radius: var(--ubb-radius);
   background: var(--ubb-bg);
   color: var(--ubb-fg);
   font-size: 14px;
+  box-shadow: var(--ubb-shadow-sm);
+  transition: border-color var(--ubb-ease), box-shadow var(--ubb-ease);
+
+  // soft focus ring around the whole editor while typing
+  &:focus-within {
+    border-color: var(--ubb-accent-ring);
+    box-shadow: 0 0 0 3px var(--ubb-accent-soft), var(--ubb-shadow-sm);
+  }
 
   &--dark {
-    --ubb-border: #444;
-    --ubb-bg: #1f1f1f;
-    --ubb-fg: #eee;
-    --ubb-toolbar-bg: #2a2a2a;
+    --ubb-accent: #4d9fff;
+    --ubb-accent-soft: rgba(77, 159, 255, 0.14);
+    --ubb-accent-ring: rgba(77, 159, 255, 0.4);
+    --ubb-border: #3a3d44;
+    --ubb-border-strong: #4a4e56;
+    --ubb-bg: #1e2024;
+    --ubb-fg: #e6e8eb;
+    --ubb-fg-muted: #9aa1ac;
+    --ubb-toolbar-bg: linear-gradient(180deg, #272a2f, #222429);
+    --ubb-hover: rgba(255, 255, 255, 0.07);
+    --ubb-field-bg: #1a1c1f;
+    --ubb-warn-fg: #f0a35e;
+    --ubb-warn-bg: rgba(214, 122, 30, 0.14);
+    --ubb-warn-border: rgba(214, 122, 30, 0.35);
+    --ubb-slot-bg: rgba(255, 255, 255, 0.06);
+    --ubb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --ubb-shadow-lg: 0 10px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
   }
-  // root-level (not nested in &--dark): nested `&__btn` there would compile
-  // to `.react-ubb--dark__btn` and match nothing
-  &--dark &__btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
   &--fullscreen { position: fixed; inset: 0; z-index: 1000; border-radius: 0; }
 
+  // ── toolbar ────────────────────────────────────────────────
   &__toolbar {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
-    padding: 6px 8px; border-bottom: 1px solid var(--ubb-border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--ubb-border);
     background: var(--ubb-toolbar-bg);
+    border-radius: var(--ubb-radius) var(--ubb-radius) 0 0;
   }
   &__btn {
-    min-height: 28px; min-width: 32px; padding: 0 8px;
-    border: 1px solid transparent; border-radius: 4px; background: transparent;
-    color: inherit; cursor: pointer; font-size: 13px;
-    &:hover:not(:disabled) { background: rgba(0, 0, 0, 0.06); }
-    &--pressed { background: rgba(22, 119, 255, 0.12); border-color: rgba(22, 119, 255, 0.4); }
-    &:disabled { opacity: 0.4; cursor: not-allowed; }
-  }
-  &__counter { margin-left: auto; font-size: 12px; opacity: 0.75; }
-  &__mode { display: inline-flex; border: 1px solid var(--ubb-border); border-radius: 4px; overflow: hidden; }
-  &__warn { flex-basis: 100%; color: var(--ubb-warn); font-size: 12px; padding: 2px 0; }
+    min-height: 30px;
+    min-width: 32px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ubb-fg-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    transition: background-color var(--ubb-ease), color var(--ubb-ease),
+      border-color var(--ubb-ease), box-shadow var(--ubb-ease);
 
-  &__body { display: flex; min-height: 160px; }
+    &:hover:not(:disabled) { background: var(--ubb-hover); color: var(--ubb-fg); }
+    &:active:not(:disabled) { transform: translateY(0.5px); }
+    &:focus-visible {
+      outline: 2px solid var(--ubb-accent);
+      outline-offset: 1px;
+    }
+    &--pressed {
+      background: var(--ubb-accent-soft);
+      color: var(--ubb-accent);
+      box-shadow: inset 0 0 0 1px var(--ubb-accent-ring);
+    }
+    &:disabled { opacity: 0.35; cursor: not-allowed; }
+  }
+  &__counter {
+    margin-left: auto;
+    padding-right: 6px;
+    font-size: 12px;
+    color: var(--ubb-fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  &__mode {
+    display: inline-flex;
+    padding: 2px;
+    background: var(--ubb-hover);
+    border-radius: 7px;
+
+    .react-ubb__btn {
+      min-height: 24px;
+      border-radius: 5px;
+      padding: 0 12px;
+      &[aria-pressed='true'] {
+        background: var(--ubb-bg);
+        color: var(--ubb-fg);
+        box-shadow: var(--ubb-shadow-sm);
+      }
+    }
+  }
+  &__warn {
+    flex-basis: 100%;
+    margin: 2px 0;
+    padding: 4px 10px;
+    border: 1px solid var(--ubb-warn-border);
+    border-radius: 6px;
+    background: var(--ubb-warn-bg);
+    color: var(--ubb-warn-fg);
+    font-size: 12px;
+  }
+
+  // ── body panes ─────────────────────────────────────────────
+  &__body { display: flex; min-height: 180px; }
   &--vertical &__body { flex-direction: column; }
   &__textarea {
-    flex: 1; padding: 8px 10px; border: none; outline: none; resize: vertical;
-    background: var(--ubb-bg); color: var(--ubb-fg); font: inherit; min-width: 0;
+    flex: 1;
+    padding: 12px 14px;
+    border: none;
+    outline: none;
+    resize: vertical;
+    background: var(--ubb-bg);
+    color: var(--ubb-fg);
+    font: inherit;
+    line-height: 1.7;
+    min-width: 0;
+    caret-color: var(--ubb-accent);
+
+    &::placeholder { color: var(--ubb-fg-muted); opacity: 0.75; }
+    &::selection { background: var(--ubb-accent-soft); }
   }
   &__preview {
-    flex: 1; padding: 8px 10px; border-left: 1px solid var(--ubb-border);
-    overflow: auto; min-width: 0;
+    flex: 1;
+    padding: 12px 14px;
+    border-left: 1px solid var(--ubb-border);
+    overflow: auto;
+    min-width: 0;
+    line-height: 1.7;
+
     &--full { border-left: none; }
   }
   &--vertical &__preview { border-left: none; border-top: 1px solid var(--ubb-border); }
 
-  &__blank {
-    display: inline-block; border-bottom: 1px solid currentColor;
-    min-height: 1em; vertical-align: baseline;
+  // thin themed scrollbars
+  &__textarea,
+  &__preview {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ubb-border-strong) transparent;
+    &::-webkit-scrollbar { width: 8px; height: 8px; }
+    &::-webkit-scrollbar-thumb {
+      background: var(--ubb-border-strong);
+      border-radius: 4px;
+    }
+    &::-webkit-scrollbar-track { background: transparent; }
   }
 
-  &__overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.25); display: flex; align-items: center; justify-content: center; z-index: 1100; }
-  &__color-panel {
-    background: var(--ubb-bg); border: 1px solid var(--ubb-border); border-radius: 8px;
-    padding: 12px; width: 280px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
-    display: flex; flex-direction: column; gap: 10px;
+  // ── blank slot (插空) ───────────────────────────────────────
+  &__blank {
+    display: inline-block;
+    min-height: 1.15em;
+    margin: 0 1px;
+    border-bottom: 1.5px dashed var(--ubb-fg-muted);
+    border-radius: 2px;
+    background: var(--ubb-slot-bg);
+    vertical-align: baseline;
+    transition: background-color var(--ubb-ease);
   }
-  &__swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
-  &__swatch { width: 24px; height: 24px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, 0.2); cursor: pointer; }
-  &__color-custom { display: flex; gap: 8px; align-items: center; }
+
+  // ── color picker ───────────────────────────────────────────
+  &__overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 18, 24, 0.38);
+    backdrop-filter: blur(2px);
+    animation: ubb-fade 0.15s ease;
+  }
+  &__color-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 296px;
+    padding: 14px;
+    background: var(--ubb-bg);
+    border: 1px solid var(--ubb-border);
+    border-radius: 12px;
+    box-shadow: var(--ubb-shadow-lg);
+    animation: ubb-pop 0.18s var(--ubb-ease);
+  }
+  &__swatches {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 8px;
+  }
+  &__swatch {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid rgba(16, 24, 40, 0.14);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+
+    &:hover { transform: scale(1.14); box-shadow: 0 0 0 2px var(--ubb-accent-ring); }
+    &:active { transform: scale(0.94); }
+    &:focus-visible { outline: 2px solid var(--ubb-accent); outline-offset: 2px; }
+  }
+  &__color-custom {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+
+    input[type='color'] {
+      width: 34px;
+      height: 30px;
+      padding: 0;
+      border: 1px solid var(--ubb-border);
+      border-radius: 7px;
+      background: none;
+      cursor: pointer;
+
+      &::-webkit-color-swatch-wrapper { padding: 2px; }
+      &::-webkit-color-swatch { border: none; border-radius: 5px; }
+    }
+  }
   &__hex-input {
-    flex: 1; padding: 4px 8px; border: 1px solid var(--ubb-border); border-radius: 4px;
-    background: var(--ubb-bg); color: var(--ubb-fg); font-size: 13px;
+    flex: 1;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--ubb-border);
+    border-radius: 6px;
+    background: var(--ubb-field-bg);
+    color: var(--ubb-fg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    letter-spacing: 0.02em;
+    transition: border-color var(--ubb-ease), box-shadow var(--ubb-ease);
+
+    &::placeholder { color: var(--ubb-fg-muted); }
+    &:focus {
+      outline: none;
+      border-color: var(--ubb-accent-ring);
+      box-shadow: 0 0 0 3px var(--ubb-accent-soft);
+    }
   }
 }
 
-.react-ubb-view { font-size: 14px; line-height: 1.6; }
+// ── read-only view (H5) ──────────────────────────────────────
+.react-ubb-view {
+  font-size: 14px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+@keyframes ubb-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ubb-pop {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
 
 // Mobile (FR-36): ≥44px touch targets, color panel as bottom sheet
 @media (max-width: 640px) {
   .react-ubb__btn { min-height: 44px; min-width: 44px; }
+  .react-ubb__mode .react-ubb__btn { min-height: 38px; }
   .react-ubb__overlay { align-items: flex-end; }
-  .react-ubb__color-panel { width: 100%; border-radius: 12px 12px 0 0; }
+  .react-ubb__color-panel {
+    width: 100%;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    animation: ubb-slide-up 0.2s ease;
+  }
+}
+@keyframes ubb-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+// Respect users who prefer no motion
+@media (prefers-reduced-motion: reduce) {
+  .react-ubb *,
+  .react-ubb__overlay,
+  .react-ubb__color-panel,
+  .react-ubb__swatch {
+    animation: none !important;
+    transition: none !important;
+  }
 }
