@@ -1,0 +1,19 @@
+{
+  "name": "@jswork/react-ubb",
+  "version": "1.0.0",
+  "description": "Lightweight React editor for plain text with simple formatting tags.",
+  "homepage": "https://js.work",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm --filter example dev",
+    "docs": "node scripts/markdown.js",
+    "pre:build": "pnpm run docs",
+    "test": "pnpm --filter @jswork/react-ubb test",
+    "build": "pnpm --filter @jswork/react-ubb build",
+    "publish": "pnpm --filter @jswork/react-ubb release"
+  }
+}
