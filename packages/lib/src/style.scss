@@ -19,6 +19,9 @@
     --ubb-fg: #eee;
     --ubb-toolbar-bg: #2a2a2a;
   }
+  // root-level (not nested in &--dark): nested `&__btn` there would compile
+  // to `.react-ubb--dark__btn` and match nothing
+  &--dark &__btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
   &--fullscreen { position: fixed; inset: 0; z-index: 1000; border-radius: 0; }
 
   &__toolbar {

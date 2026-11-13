@@ -84,6 +84,12 @@ export interface UbbEditorProps {
   disabledTags?: string[];
   colors?: string[];
   stripPaste?: boolean;
+  /**
+   * Persist the draft to localStorage on every change and restore it on mount
+   * (uncontrolled editors without defaultValue). Multiple editor instances on
+   * one page should pass distinct keys; the default key 'react-ubb-draft' is
+   * shared.
+   */
   autoSave?: { key: string } | boolean;
   locale?: 'zh-CN' | 'en-US';
   labels?: Partial<Labels>;
@@ -118,8 +124,23 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
     style,
   } = props;
 
-  const [innerValue, setInnerValue] = useState(defaultValue ?? '');
   const isControlled = value !== undefined;
+  const autoSaveKey = autoSave === true ? 'react-ubb-draft' : typeof autoSave === 'object' ? autoSave.key : undefined;
+
+  const [innerValue, setInnerValue] = useState(() => {
+    // restore a persisted draft at mount (uncontrolled, no defaultValue) in
+    // the initializer — not an effect — so StrictMode's double-invoked mount
+    // effects can never clobber the draft before it is read
+    if (!isControlled && defaultValue === undefined && autoSaveKey) {
+      try {
+        const draft = localStorage.getItem(autoSaveKey);
+        if (draft != null) return draft;
+      } catch {
+        /* storage unavailable — fall through */
+      }
+    }
+    return defaultValue ?? '';
+  });
   const source = isControlled ? (value as string) : innerValue;
 
   const [innerMode, setInnerMode] = useState<'edit' | 'preview'>('edit');
@@ -368,36 +389,16 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overLimit]);
 
-  const autoSaveKey = autoSave === true ? 'react-ubb-draft' : typeof autoSave === 'object' ? autoSave.key : undefined;
-
-  // persist the draft on every change; the mount run is skipped so a stored
-  // draft survives until the restore effect below has had its chance
-  const autoSaveInit = useRef(true);
+  // persist the draft on every change; the mount run writes back exactly what
+  // the initializer restored — harmless
   useEffect(() => {
     if (!autoSaveKey) return;
-    if (autoSaveInit.current) {
-      autoSaveInit.current = false;
-      return;
-    }
     try {
       localStorage.setItem(autoSaveKey, source);
     } catch {
       /* storage unavailable — ignore */
     }
   }, [source, autoSaveKey]);
-
-  // mount-time restore: uncontrolled AND no defaultValue
-  useEffect(() => {
-    if (!autoSaveKey || isControlled || defaultValue !== undefined) return;
-    try {
-      const draft = localStorage.getItem(autoSaveKey);
-      if (draft != null) setInnerValue(draft);
-    } catch {
-      /* ignore */
-    }
-    // mount-only: reads the key resolved on first render
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // leaving edit mode unmounts the textarea; a stale-open panel would resurface
   // on return — close it at the source instead
@@ -406,10 +407,12 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   }, [mode, readOnly, disabled]);
 
   const showPreviewPane = showPreview && mode === 'edit';
+  const previewAst = useMemo(
+    () => (overLimit ? parse(manualPreview, tags).ast : parse(debouncedSource, tags).ast),
+    [overLimit, manualPreview, debouncedSource, tags],
+  );
   const previewBody =
-    mode === 'preview' || showPreviewPane ? (
-      <>{renderAst(overLimit ? parse(manualPreview, tags).ast : parse(debouncedSource, tags).ast, plugins)}</>
-    ) : null;
+    mode === 'preview' || showPreviewPane ? <>{renderAst(previewAst, plugins)}</> : null;
 
   return (
     <div

@@ -1,6 +1,6 @@
 import { render, fireEvent, screen, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { createRef } from 'react';
+import { createRef, StrictMode } from 'react';
 import UbbEditor from '../src';
 import ColorPicker, { DEFAULT_COLORS } from '../src/editor/color-picker';
 import { definePlugin } from '../src/renderer/types';
@@ -23,6 +23,11 @@ beforeAll(() => {
       clear: () => void mem.clear(),
     } as Storage;
   }
+});
+
+// a failing assertion inside a fake-timer test must not leak fake timers
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('replaceRange', () => {
@@ -133,7 +138,6 @@ describe('editor interactions', () => {
       vi.advanceTimersByTime(250);
     });
     expect(document.querySelector('.react-ubb__preview strong')).toBeInTheDocument();
-    vi.useRealTimers();
   });
 
   it('AC-02: clicking bold again unwraps', () => {
@@ -347,7 +351,6 @@ describe('preview & autosave', () => {
       vi.advanceTimersByTime(250);
     });
     expect(document.querySelector('.react-ubb__preview strong')).toBeInTheDocument();
-    vi.useRealTimers();
   });
 
   it('over 20k chars freezes preview and shows refresh button (FR-24)', () => {
@@ -355,6 +358,13 @@ describe('preview & autosave', () => {
     render(<UbbEditor defaultValue={long} />);
     expect(screen.getByRole('button', { name: '刷新预览' })).toBeInTheDocument();
     expect(document.querySelector('.react-ubb__preview')?.textContent?.length).toBe(0);
+  });
+
+  it('over-limit: manual refresh renders the current source (FR-24)', () => {
+    const long = 'x'.repeat(20001);
+    render(<UbbEditor defaultValue={long} />);
+    fireEvent.click(screen.getByRole('button', { name: '刷新预览' }));
+    expect(document.querySelector('.react-ubb__preview')?.textContent?.length).toBe(20001);
   });
 
   it('crossing 20k while editing freezes threshold content, not blank', () => {
@@ -391,6 +401,17 @@ describe('preview & autosave', () => {
     localStorage.setItem('my-draft', 'restored');
     render(<UbbEditor autoSave={{ key: 'my-draft' }} />);
     expect(ta().value).toBe('restored');
+  });
+
+  it('autoSave draft survives StrictMode double-invoked effects (FR-35)', () => {
+    localStorage.setItem('sm-draft', 'keep me');
+    render(
+      <StrictMode>
+        <UbbEditor autoSave={{ key: 'sm-draft' }} />
+      </StrictMode>,
+    );
+    expect(ta().value).toBe('keep me');
+    expect(localStorage.getItem('sm-draft')).toBe('keep me');
   });
 
   it('color panel autofocuses hex input and returns focus to textarea on Esc', () => {
