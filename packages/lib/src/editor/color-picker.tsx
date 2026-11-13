@@ -47,11 +47,13 @@ export default function ColorPicker({ colors = DEFAULT_COLORS, onSelect, onClose
 
   const commit = (raw: string) => {
     if (!COLOR_PATTERN.test(raw)) return;
+    // dedupe recents case-insensitively (stored lowercase); keep the user's
+    // casing in the emitted value
     const value = raw.toLowerCase();
-    const next = [value, ...recent.filter((c) => c !== value)].slice(0, RECENT_MAX);
+    const next = [value, ...recent.filter((c) => c.toLowerCase() !== value)].slice(0, RECENT_MAX);
     setRecent(next);
     saveRecent(next);
-    onSelect(value);
+    onSelect(raw);
   };
 
   return (
