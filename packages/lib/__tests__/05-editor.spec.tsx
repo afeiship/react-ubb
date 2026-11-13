@@ -357,6 +357,29 @@ describe('preview & autosave', () => {
     expect(document.querySelector('.react-ubb__preview')?.textContent?.length).toBe(0);
   });
 
+  it('crossing 20k while editing freezes threshold content, not blank', () => {
+    vi.useFakeTimers();
+    render(<UbbEditor defaultValue={'abc'} />);
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    const crossing = 'abc' + 'y'.repeat(20000);
+    fireEvent.input(ta(), { target: { value: crossing } });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    // frozen at the threshold-moment content (first over-limit value)
+    expect(screen.getByRole('button', { name: '刷新预览' })).toBeInTheDocument();
+    expect(document.querySelector('.react-ubb__preview')?.textContent).toBe(crossing);
+    // further over-limit edits do NOT auto-refresh the frozen preview
+    fireEvent.input(ta(), { target: { value: crossing + 'zzz' } });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(document.querySelector('.react-ubb__preview')?.textContent).toBe(crossing);
+    vi.useRealTimers();
+  });
+
   it('autoSave persists draft to localStorage (FR-35)', () => {
     localStorage.clear();
     render(<UbbEditor defaultValue="" autoSave={{ key: 'my-draft' }} />);

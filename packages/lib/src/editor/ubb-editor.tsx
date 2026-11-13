@@ -358,9 +358,14 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   const debouncedSource = useDebounced(source, 200);
 
   // over the limit the preview only renders a manual snapshot (refresh
-  // button); reset it on each crossing so a stale snapshot never resurfaces
+  // button). Mounted-over-limit stays blank (avoid a huge initial render);
+  // crossing the limit while editing freezes the threshold-moment content
+  // so the pane never looks like it lost data. Re-crossing re-freezes.
+  const wasOverLimitRef = useRef<boolean | null>(null);
   useEffect(() => {
-    if (overLimit) setManualPreview('');
+    if (overLimit && wasOverLimitRef.current === false) setManualPreview(source);
+    wasOverLimitRef.current = overLimit;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overLimit]);
 
   const autoSaveKey = autoSave === true ? 'react-ubb-draft' : typeof autoSave === 'object' ? autoSave.key : undefined;
