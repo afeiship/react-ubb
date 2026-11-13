@@ -179,13 +179,9 @@
   // ── blank slot (插空) ───────────────────────────────────────
   &__blank {
     display: inline-block;
-    min-height: 1.15em;
-    margin: 0 1px;
-    border-bottom: 1.5px dashed var(--ubb-fg-muted);
-    border-radius: 2px;
-    background: var(--ubb-slot-bg);
+    min-height: 1em;
+    border-bottom: 1px solid currentColor;
     vertical-align: baseline;
-    transition: background-color var(--ubb-ease);
   }
 
   // ── color picker ───────────────────────────────────────────
