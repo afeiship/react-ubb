@@ -21,6 +21,8 @@
       "require": "./dist/renderer/index.cjs.js"
     },
     "./src": "./src/index.ts",
+    "./src/core": "./src/core/index.ts",
+    "./src/renderer": "./src/renderer/index.ts",
     "./src/*": "./src/*",
     "./dist/style.css": "./dist/style.css"
   },
