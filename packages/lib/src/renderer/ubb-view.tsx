@@ -6,6 +6,7 @@ import { CustomTag } from './types';
 
 export interface UbbViewProps {
   source: string;
+  /** Prefer a stable reference (module constant / useMemo): a new array identity re-runs parse each render. */
   plugins?: CustomTag[];
   className?: string;
 }

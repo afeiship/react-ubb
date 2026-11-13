@@ -1,5 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { isValidElement, ReactNode } from 'react';
+import { parse } from '../src/core';
+import { renderAst } from '../src/renderer/render-ast';
 import { definePlugin } from '../src/renderer/types';
 import UbbView from '../src/renderer/ubb-view';
 
@@ -42,6 +45,12 @@ describe('UbbView', () => {
     expect(container.querySelector('br')).toBeInTheDocument();
   });
 
+  it('CRLF newline renders <br> without stray CR', () => {
+    const { container } = render(<UbbView source={'a\r\nb'} />);
+    expect(container.querySelector('br')).toBeInTheDocument();
+    expect(container.textContent).toBe('ab');
+  });
+
   it('unknown tag stays literal', () => {
     render(<UbbView source={'[foo]x[/foo]'} />);
     expect(screen.getByText('[foo]x[/foo]')).toBeInTheDocument();
@@ -80,5 +89,28 @@ describe('UbbView', () => {
     const { container } = render(<UbbView source={'[b]x[/b]'} plugins={[b2]} />);
     expect(screen.getByTestId('pb').textContent).toBe('x');
     expect(container.querySelector('strong')).not.toBeInTheDocument();
+  });
+
+  it('renderAst handles 5000-deep [b] nesting iteratively', () => {
+    const deep = '[b]'.repeat(5000) + 'x' + '[/b]'.repeat(5000);
+    const els = renderAst(parse(deep).ast);
+    // walk down to the innermost node iteratively
+    let el: ReactNode = els[0];
+    let depth = 0;
+    while (isValidElement<{ children?: ReactNode }>(el)) {
+      const kids = el.props.children;
+      el = Array.isArray(kids) ? kids[0] : kids;
+      depth++;
+    }
+    expect(el).toBe('x'); // innermost text reached without stack overflow
+    expect(depth).toBe(5001); // 5000 nested <strong> + 1 text <Fragment>
+  });
+
+  it('2400-deep [b] source renders in UbbView without throwing', () => {
+    // jsdom/react-dom recurse internally on DOM mutation, capping feasible DOM depth;
+    // 2400 is beyond the old recursive renderAst's limit while inside the jsdom limit
+    const deep = '[b]'.repeat(2400) + 'x' + '[/b]'.repeat(2400);
+    render(<UbbView source={deep} />);
+    expect(screen.getByText('x')).toBeInTheDocument();
   });
 });
