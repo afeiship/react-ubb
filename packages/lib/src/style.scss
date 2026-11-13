@@ -198,7 +198,11 @@
     justify-content: center;
     background: rgba(15, 18, 24, 0.38);
     backdrop-filter: blur(2px);
-    animation: ubb-fade 0.15s ease;
+    // on Chrome, animating opacity on the same element that has
+    // backdrop-filter re-runs the blur every frame → flicker/jitter;
+    // give the blur its own compositor layer and drop the opacity animation
+    // (the panel pop below carries the transition)
+    will-change: backdrop-filter;
   }
   &__color-panel {
     display: flex;
@@ -210,7 +214,11 @@
     border: 1px solid var(--ubb-border);
     border-radius: 12px;
     box-shadow: var(--ubb-shadow-lg);
-    animation: ubb-pop 0.18s var(--ubb-ease);
+    // pop animation WITHOUT opacity: opacity on the panel during the overlay's
+    // backdrop-filter paint was the jitter source (Chrome repaints the blurred
+    // backdrop as the layer above changes alpha each frame)
+    animation: ubb-pop 0.18s cubic-bezier(0.2, 0.7, 0.3, 1);
+    will-change: transform;
   }
   &__swatches {
     display: grid;
@@ -277,13 +285,9 @@
   word-break: break-word;
 }
 
-@keyframes ubb-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
 @keyframes ubb-pop {
-  from { opacity: 0; transform: scale(0.96) translateY(4px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from { transform: scale(0.96) translateY(4px); }
+  to { transform: scale(1) translateY(0); }
 }
 
 // Mobile (FR-36): ≥44px touch targets, color panel as bottom sheet
