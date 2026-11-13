@@ -14,6 +14,7 @@
 | 字面转义 | `[[b]]` 双括号转义：`[[` 与 `]]` 之间按字面文本渲染（`[[b]]` 显示 `[b]`），不作为标签解析 |
 | 取色实现 | 零依赖自研：预设色板（默认 16 色可配）+ `input[type=color]` + hex 输入框 + 最近使用（最多 8） |
 | 标签扩展机制 | 插件化 `plugins` + `definePlugin`：每个插件即一个标签定义，覆盖解析（值属性规则）、工具栏（图标 / 快捷键 / 顺序）、渲染；多标签聚合 plugin 打包留待后续，API 不受影响 |
+| 单标签语法 | 支持 `[name/]`（HTML void 元素模式）：需 TagSpec 声明 `selfClosing`，语义等价 `[name][/name]` 空节点；插空为典型场景；有选区时工具栏仍成对包裹（承载隐藏原文）；未声明的标签遇到 `[foo/]` 按普通文本降级 |
 
 ## 2. 技术选型
 
@@ -91,6 +92,7 @@ export interface TagSpec {
   name: string;             // 小写标签名
   label?: string;           // 工具栏文案 / aria-label
   paired?: boolean;         // 默认 true（v1 全部成对）
+  selfClosing?: boolean;    // 支持 [name/] 单标签形式，等价 [name][/name] 空节点
   valuePattern?: RegExp;    // 值属性规则（[name=value]）；color 内置 hex 规则
 }
 export const BUILT_IN_TAGS: TagSpec[];  // b / i / color
@@ -204,7 +206,8 @@ const markPlugin = definePlugin({
 1. `[[` → 进入转义段，找最近的 `]]`；渲染为段内内容的字面文本（`[[b]]` → `[b]`）；找不到 `]]` 则到文末按字面处理并记录 `unclosed-escape`
 2. `[/name]` 且 name 在白名单（大小写不敏感）→ close token
 3. `[name]` / `[name=value]` 且 name 在白名单 → open token；值属性仅当 TagSpec 声明了 `valuePattern` 才接受
-4. 其余 `[`（含白名单外标签、未声明 `valuePattern` 却带值如 `[b=x]`）→ 普通文本字符
+4. `[name/]` 且声明 `selfClosing` → 空节点（children 为空），不入栈，不参与就近闭合逻辑，等价 `[name][/name]`
+5. 其余 `[`（含白名单外标签、未声明 `valuePattern` 却带值如 `[b=x]`、未声明 `selfClosing` 的 `[foo/]`）→ 普通文本字符
 
 栈规则：
 
@@ -219,7 +222,7 @@ const markPlugin = definePlugin({
 ## 6. transform 规格
 
 - **wrap**：选区完整位于同名标签的 `contentRange` 内 → 改为 unwrap（解包）；否则包裹。选区恢复到新文本中包裹内容上（FR-10/12）
-- **insertEmpty**：`[tag][/tag]`，光标置于中间（FR-11）；声明了 `valuePattern` 的标签插入 `[tag=][/tag]`，光标在 `=` 后
+- **insertEmpty**：`[tag][/tag]`，光标置于中间（FR-11）；声明了 `valuePattern` 的标签插入 `[tag=][/tag]`，光标在 `=` 后；声明了 `selfClosing` 的标签无选区时插入 `[tag/]`，光标在其后（有选区仍走成对包裹）
 - **replaceColor**：选区位于某 color 节点 `contentRange` 内 → 仅替换该标签颜色值，不产生嵌套（FR-18）；否则按 wrap 处理
 - 输出统一小写标签（FR-07）
 
@@ -272,7 +275,7 @@ AC-07（性能）、AC-08（真机输入法）、AC-09（全键盘）、AC-15/16
 - 白名单标签带意外属性（`[b=x]`）按普通文本处理
 - 扩展机制为插件化 `plugins` prop + `definePlugin`；多标签 plugin 打包（聚合 locale / 工具栏分组）留待后续演进，不影响现有 API
 - 转义段内不嵌套解析；`[[` 未闭合到文末按字面渲染并报 `unclosed-escape`
-- `paired: false` 的单边标签 v1 不实现（TagSpec 预留字段）
+- `paired: false` 的单边标签 v1 不实现（TagSpec 预留字段）；单标签语法 `[name/]` 已完成设计（见 §5 / §6），是否纳入 v1 实现待定——推荐与插空插件一并落地（parser 增量约 15 行），不实现时 `[blank/]` 自然降级为普通文本
 - maxLength 截断会以 AST 重建源文本（标签规范化为小写，文本内容无损）
 - autoSave 仅 localStorage 简版：`{ key }` 或 `true`（默认 key `react-ubb-draft`）
 
