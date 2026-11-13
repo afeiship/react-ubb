@@ -4,6 +4,30 @@
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.cjs.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.esm.js",
+      "require": "./dist/core/index.cjs.js"
+    },
+    "./renderer": {
+      "types": "./dist/renderer/index.d.ts",
+      "import": "./dist/renderer/index.esm.js",
+      "require": "./dist/renderer/index.cjs.js"
+    },
+    "./src": "./src/index.ts",
+    "./src/*": "./src/*",
+    "./dist/style.css": "./dist/style.css"
+  },
+  "sideEffects": [
+    "*.css",
+    "*.scss"
+  ],
   "description": "Lightweight React editor for plain text with simple formatting tags.",
   "homepage": "https://js.work",
   "license": "MIT",
@@ -13,7 +37,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "postbuild": "postsass -s src/style.scss -d dist/style.css -c",
+    "postbuild": "sass src/style.scss dist/style.css --no-source-map",
     "test": "vitest run",
     "test:watch": "vitest",
     "release": "release-it"
@@ -33,6 +57,7 @@
     "jsdom": "^29.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "sass": "^1.108.2",
     "tsup": "^8.2.4",
     "typescript": "^5.2.2",
     "vitest": "^4.1.2"
