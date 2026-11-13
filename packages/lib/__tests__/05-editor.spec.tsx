@@ -1,6 +1,9 @@
 import { render } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { Snapshot, UndoStack, matchShortcut, replaceRange } from '../src/editor/selection';
+import { mergeLocale } from '../src/editor/locale';
+import { zhCN } from '../src/locale/zh-cn';
+import { enUS } from '../src/locale/en-us';
 
 describe('replaceRange', () => {
   it('falls back to setRangeText in jsdom and sets selection', () => {
@@ -65,5 +68,19 @@ describe('matchShortcut', () => {
   it('matches mod+shift+z', () => {
     expect(matchShortcut(ev('z', { mod: true, shift: true }), 'mod+shift+z')).toBe(true);
     expect(matchShortcut(ev('z', { mod: true }), 'mod+shift+z')).toBe(false);
+  });
+});
+
+describe('locale', () => {
+  it('zh/en both provide full label set', () => {
+    expect(zhCN.bold).toBe('加粗');
+    expect(enUS.bold).toBe('Bold');
+    expect(zhCN.counter(3, 10)).toBe('3 / 10');
+    expect(enUS.counter(3)).toBe('3');
+  });
+  it('mergeLocale patches partially', () => {
+    const merged = mergeLocale(zhCN, { bold: 'B' });
+    expect(merged.bold).toBe('B');
+    expect(merged.italic).toBe('斜体');
   });
 });
