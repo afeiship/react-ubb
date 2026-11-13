@@ -4,6 +4,7 @@ import {
   ForwardedRef,
   FormEvent,
   forwardRef,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -154,6 +155,9 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
         next = { source: truncated, selection: { start: clamp(t.selection.start), end: clamp(t.selection.end) } };
       }
     }
+    // programmatic setSelectionRange fires no `select` event — sel is the sole
+    // input of activeNames, so sync it here for BOTH paths or it goes stale.
+    setSel(next.selection);
     const native = replaceRange(ta, next.source, { start: 0, end: source.length }, next.selection);
     if (!native) {
       if (!isControlled) setInnerValue(next.source);
@@ -167,8 +171,12 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
     if (maxLength != null) {
       const r = parse(next, tags);
       if (r.visibleLength > maxLength) {
+        const s0 = ta.selectionStart;
+        const s1 = ta.selectionEnd;
         next = truncateToVisible(next, maxLength, tags);
         ta.value = next;
+        const clamp = (v: number) => Math.min(v, next.length);
+        ta.setSelectionRange(clamp(s0), clamp(s1));
       }
     }
     if (!isControlled) setInnerValue(next);
@@ -203,6 +211,7 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   }, [result, sel]);
 
   const handleClear = () => {
+    if (activeNames.size === 0) return; // no-op: avoid junk undo unit + redundant onChange
     let cur = source;
     let curSel = currentSel();
     for (const name of Array.from(activeNames)) {
@@ -236,13 +245,24 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
       clear: () => applyTransform({ source: '', selection: { start: 0, end: 0 } }),
       validate: () => result.errors.length === 0,
     }),
-    [source, tags, readOnly, disabled, mode, result],
+    [source, tags, readOnly, disabled, mode, result, maxLength, onChange],
   );
 
   const overLimit = source.length > PREVIEW_LIMIT;
-  const previewSource = overLimit ? manualPreview : source;
-  const previewBody = <>{renderAst(parse(previewSource, tags).ast, plugins)}</>;
+
+  // when a doc crosses the limit the preview must show the content at the
+  // crossing point, not whatever was around at mount time
+  const wasOverLimit = useRef(false);
+  useEffect(() => {
+    if (overLimit && !wasOverLimit.current) setManualPreview(source);
+    wasOverLimit.current = overLimit;
+  }, [overLimit, source]);
+
   const showPreviewPane = showPreview && mode === 'edit';
+  const previewBody =
+    mode === 'preview' || showPreviewPane ? (
+      <>{renderAst(overLimit ? parse(manualPreview, tags).ast : result.ast, plugins)}</>
+    ) : null;
 
   return (
     <div

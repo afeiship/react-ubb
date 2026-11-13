@@ -58,9 +58,9 @@ export default function Toolbar(p: ToolbarProps) {
     <div className="react-ubb__toolbar" role="toolbar">
       {p.tags.map((tag) =>
         tag.name === 'color'
-          ? btn('color', p.labels.color, false, p.onColorClick, { 'aria-haspopup': 'dialog' })
+          ? btn('tag:color', p.labels.color, false, p.onColorClick, { 'aria-haspopup': 'dialog' })
           : btn(
-              tag.name,
+              `tag:${tag.name}`,
               (BUILTIN_KEY[tag.name] && p.labels[BUILTIN_KEY[tag.name]]) ||
                 pluginMap.get(tag.name)?.label ||
                 tag.label ||

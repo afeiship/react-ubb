@@ -52,4 +52,26 @@ describe('UbbEditor basics', () => {
     const bold = screen.getByRole('button', { name: '加粗' });
     expect(bold).toHaveAttribute('aria-pressed', 'false');
   });
+
+  it('selection state stays in sync after toolbar transform: aria-pressed reflects the wrap (review fix 1)', () => {
+    render(<UbbEditor defaultValue="hello" />);
+    const ta = document.querySelector('.react-ubb__textarea') as HTMLTextAreaElement;
+    ta.setSelectionRange(0, 5);
+    fireEvent.select(ta);
+    fireEvent.click(screen.getByRole('button', { name: '加粗' }));
+    expect(ta.value).toBe('[b]hello[/b]');
+    expect(screen.getByRole('button', { name: '加粗' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('clear-styles unwraps back without moving the caret (review fix 1)', () => {
+    render(<UbbEditor defaultValue="hello" />);
+    const ta = document.querySelector('.react-ubb__textarea') as HTMLTextAreaElement;
+    ta.setSelectionRange(0, 5);
+    fireEvent.select(ta);
+    fireEvent.click(screen.getByRole('button', { name: '加粗' }));
+    expect(ta.value).toBe('[b]hello[/b]');
+    // no caret move between clicks — clear must derive from synced selection state
+    fireEvent.click(screen.getByRole('button', { name: '清除样式' }));
+    expect(ta.value).toBe('hello');
+  });
 });
