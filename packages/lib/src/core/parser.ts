@@ -37,7 +37,6 @@ export function parse(source: string, tags: TagSpec[] = DEFAULT_TAGS): ParseResu
 
   let i = 0;
   const n = source.length;
-  let noCloseFrom = n; // smallest index known to have no ']' after it
   while (i < n) {
     const ch = source[i];
 
@@ -55,81 +54,85 @@ export function parse(source: string, tags: TagSpec[] = DEFAULT_TAGS): ParseResu
       continue;
     }
 
-    // 2/3. tag tokens (candidate window: up to and including the next ']')
-    if (ch === '[' && i < noCloseFrom) {
-      const closeIdx = source.indexOf(']', i);
-      if (closeIdx === -1) noCloseFrom = i; // no ']' remains → no token can match at or beyond i
-      else {
-        const rest = source.slice(i, closeIdx + 1);
-        if (source[i + 1] === '/') {
-          const m = CLOSE_RE.exec(rest);
-          if (m && specs.has(m[1].toLowerCase())) {
-            const name = m[1].toLowerCase();
-            const tokenEnd = i + m[0].length;
-            const bucket = openFrames.get(name);
-            const match = bucket && bucket.length ? bucket[bucket.length - 1] : undefined;
-            if (!match) {
-              errors.push({ kind: 'mismatched', pos: i, message: `Unexpected [/${name}]` });
-              appendBuf(m[0], i);
+    // 2/3. tag tokens (two-stage bounded window: 512-char cap)
+    if (ch === '[') {
+      const win = source.slice(i, Math.min(n, i + 512));
+      const rel = win.indexOf(']');
+      if (rel === -1) {
+        // no `]` within 512 chars → cannot start a token, treat as ordinary char
+        appendBuf(ch, i);
+        i++;
+        continue;
+      }
+      const rest = win.slice(0, rel + 1);
+      if (source[i + 1] === '/') {
+        const m = CLOSE_RE.exec(rest);
+        if (m && specs.has(m[1].toLowerCase())) {
+          const name = m[1].toLowerCase();
+          const tokenEnd = i + m[0].length;
+          const bucket = openFrames.get(name);
+          const match = bucket && bucket.length ? bucket[bucket.length - 1] : undefined;
+          if (!match) {
+            errors.push({ kind: 'mismatched', pos: i, message: `Unexpected [/${name}]` });
+            appendBuf(m[0], i);
+            i = tokenEnd;
+            continue;
+          }
+          flushText(i);
+          let f: Frame;
+          while ((f = stack.pop()!) !== match) {
+            f.node.range[1] = i;
+            f.node.contentRange[1] = i;
+            openFrames.get(f.spec.name.toLowerCase())!.pop();
+            errors.push({ kind: 'mismatched', pos: i, message: `Nested [${f.spec.name}] closed implicitly at ${i}` });
+          }
+          f.node.range[1] = tokenEnd;
+          f.node.contentRange[1] = i;
+          bucket!.pop();
+          i = tokenEnd;
+          continue;
+        }
+      } else {
+        const m = OPEN_RE.exec(rest);
+        if (m && specs.has(m[1].toLowerCase())) {
+          const spec = specs.get(m[1].toLowerCase())!;
+          const tokenEnd = i + m[0].length;
+          const rawValue = m[2];
+          let value: string | undefined;
+          if (rawValue !== undefined) {
+            if (!spec.valuePattern) {
+              appendBuf(m[0], i); // value not allowed → plain text
               i = tokenEnd;
               continue;
             }
-            flushText(i);
-            let f: Frame;
-            while ((f = stack.pop()!) !== match) {
-              f.node.range[1] = i;
-              f.node.contentRange[1] = i;
-              openFrames.get(f.spec.name.toLowerCase())!.pop();
-              errors.push({ kind: 'mismatched', pos: i, message: `Nested [${f.spec.name}] closed implicitly at ${i}` });
+            if (!spec.valuePattern.test(rawValue)) {
+              errors.push({ kind: 'invalid-value', pos: i, message: `Invalid value "${rawValue}" for [${spec.name}]` });
+            } else {
+              value = rawValue;
             }
-            f.node.range[1] = tokenEnd;
-            f.node.contentRange[1] = i;
-            bucket!.pop();
-            i = tokenEnd;
-            continue;
+          } else if (spec.valuePattern) {
+            errors.push({ kind: 'invalid-value', pos: i, message: `Missing value for [${spec.name}]` });
           }
-        } else {
-          const m = OPEN_RE.exec(rest);
-          if (m && specs.has(m[1].toLowerCase())) {
-            const spec = specs.get(m[1].toLowerCase())!;
-            const tokenEnd = i + m[0].length;
-            const rawValue = m[2];
-            let value: string | undefined;
-            if (rawValue !== undefined) {
-              if (!spec.valuePattern) {
-                appendBuf(m[0], i); // value not allowed → plain text
-                i = tokenEnd;
-                continue;
-              }
-              if (!spec.valuePattern.test(rawValue)) {
-                errors.push({ kind: 'invalid-value', pos: i, message: `Invalid value "${rawValue}" for [${spec.name}]` });
-              } else {
-                value = rawValue;
-              }
-            } else if (spec.valuePattern) {
-              errors.push({ kind: 'invalid-value', pos: i, message: `Missing value for [${spec.name}]` });
-            }
-            flushText(i);
-            const node: Extract<UbbNode, { children: UbbNode[] }> = {
-              type: spec.name,
-              children: [],
-              range: [i, tokenEnd],
-              contentRange: [tokenEnd, tokenEnd],
-            };
-            if (value !== undefined) {
-              node.value = value;
-              if (spec.name === 'color') node.color = value;
-            }
-            attach(node);
-            const frame: Frame = { spec, node };
-            stack.push(frame);
-            const key = spec.name.toLowerCase();
-            const bucket = openFrames.get(key) ?? [];
-            bucket.push(frame);
-            openFrames.set(key, bucket);
-            i = tokenEnd;
-            continue;
+          flushText(i);
+          const node: Extract<UbbNode, { children: UbbNode[] }> = {
+            type: spec.name,
+            children: [],
+            range: [i, tokenEnd],
+            contentRange: [tokenEnd, tokenEnd],
+          };
+          if (value !== undefined) {
+            node.value = value;
+            if (spec.name === 'color') node.color = value;
           }
+          attach(node);
+          const frame: Frame = { spec, node };
+          stack.push(frame);
+          const key = spec.name.toLowerCase();
+          const bucket = openFrames.get(key) ?? [];
+          bucket.push(frame);
+          openFrames.set(key, bucket);
+          i = tokenEnd;
+          continue;
         }
       }
     }

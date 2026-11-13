@@ -173,6 +173,14 @@ describe('parser', () => {
     expect(r.visibleLength).toBe(1);
   });
 
+  it('built-in color with >64-char value records invalid-value, not literal degradation', () => {
+    const r = parse(`[color=${'x'.repeat(70)}]y[/color]`);
+    expect(r.ast[0].type).toBe('color');
+    expect((r.ast[0] as any).color).toBeUndefined();
+    expect(r.errors[0].kind).toBe('invalid-value');
+    expect(r.visibleLength).toBe(1);
+  });
+
   it('brackets with no closing bracket anywhere stay literal', () => {
     const r = parse('a[b[x');
     expect(r.ast[0]).toMatchObject({ type: 'text', text: 'a[b[x' });
