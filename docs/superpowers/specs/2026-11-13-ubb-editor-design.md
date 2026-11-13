@@ -13,6 +13,7 @@
 | 未闭合标签 | 预览按自动闭合到文末渲染（不吞字）；编辑器高亮提示；`errors` 含 `unclosed`；`validate()` 返回 false，业务侧据此阻止保存 |
 | 字面转义 | `[[b]]` 双括号转义：`[[` 与 `]]` 之间按字面文本渲染（`[[b]]` 显示 `[b]`），不作为标签解析 |
 | 取色实现 | 零依赖自研：预设色板（默认 16 色可配）+ `input[type=color]` + hex 输入框 + 最近使用（最多 8） |
+| 标签扩展机制 | 增强型 `customTags` + `defineTag`：单标签定义对象覆盖解析（值属性规则）、工具栏（图标 / 快捷键 / 顺序）、渲染；多标签聚合的 plugin 打包留待后续，API 不受影响 |
 
 ## 2. 技术选型
 
@@ -65,14 +66,15 @@ export type UbbNode =
   | { type: 'text'; text: string; range: [number, number] }
   | {
       type: string;            // 'b' | 'i' | 'color' | 自定义标签名
-      color?: string;          // 仅 color，非法值时 undefined
+      value?: string;          // 标签值属性原始值（[name=value]），仅声明了 valuePattern 的标签
+      color?: string;          // 仅 color：校验通过的 hex，非法时 undefined（渲染降级用）
       children: UbbNode[];
       range: [number, number];       // 含标签外壳的源区间
       contentRange: [number, number]; // 不含标签外壳
     };
 
 export interface ParseError {
-  kind: 'unclosed' | 'mismatched' | 'invalid-color' | 'unclosed-escape';
+  kind: 'unclosed' | 'mismatched' | 'invalid-value' | 'unclosed-escape';
   pos: number;
   message: string;
 }
@@ -86,9 +88,10 @@ export interface ParseResult {
 
 // core/tags.ts —— 纯数据，不含 React 类型
 export interface TagSpec {
-  name: string;        // 小写标签名
-  label?: string;      // 工具栏文案 / aria-label
-  paired?: boolean;    // 默认 true（v1 全部成对）
+  name: string;             // 小写标签名
+  label?: string;           // 工具栏文案 / aria-label
+  paired?: boolean;         // 默认 true（v1 全部成对）
+  valuePattern?: RegExp;    // 值属性规则（[name=value]）；color 内置 hex 规则
 }
 export const BUILT_IN_TAGS: TagSpec[];  // b / i / color
 export const BLANK_TAG: TagSpec;        // blank 预设
@@ -96,8 +99,20 @@ export const DEFAULT_TAGS: TagSpec[];   // b / i / color / blank
 
 // renderer 侧扩展（编辑器与 UbbView 共用）
 export interface CustomTag extends TagSpec {
-  render?: (props: { children: ReactNode; node: UbbNode }) => ReactNode;
+  icon?: ReactNode;                    // 工具栏图标，缺省渲染 label
+  shortcut?: string;                   // 如 'mod+k'（mod = Cmd/Ctrl），仅编辑器聚焦时拦截
+  toolbar?: boolean;                   // 默认 true；false = 仅参与解析，不显示按钮
+  render?: (props: { children: ReactNode; node: UbbNode }) => ReactNode; // node.value 可用
 }
+
+// 定义辅助函数：identity + 类型推导，业务侧获得完整字段提示与校验
+export const defineTag: <T extends CustomTag>(tag: T) => T;
+
+// 注册语义：
+// - customTags 与内置标签同名 → 后者被覆盖（dev 环境 console.warn）
+// - 工具栏顺序 = 内置按钮 + customTags 声明顺序（toolbar !== false 的）
+// - enabledTags / disabledTags 对内置与自定义标签一视同仁
+// - blank 预设本身即用 defineTag 定义（机制的第一个用例）
 
 // core/parser.ts
 export function parse(source: string, tags: TagSpec[] = DEFAULT_TAGS): ParseResult;
@@ -159,8 +174,8 @@ export interface UbbEditorRef {
 
 1. `[[` → 进入转义段，找最近的 `]]`；渲染为段内内容的字面文本（`[[b]]` → `[b]`）；找不到 `]]` 则到文末按字面处理并记录 `unclosed-escape`
 2. `[/name]` 且 name 在白名单（大小写不敏感）→ close token
-3. `[name]` / `[name=value]` 且 name 在白名单 → open token；`value` 仅 color 使用
-4. 其余 `[`（含白名单外标签、带意外属性的白名单标签如 `[b=x]`）→ 普通文本字符
+3. `[name]` / `[name=value]` 且 name 在白名单 → open token；值属性仅当 TagSpec 声明了 `valuePattern` 才接受
+4. 其余 `[`（含白名单外标签、未声明 `valuePattern` 却带值如 `[b=x]`）→ 普通文本字符
 
 栈规则：
 
@@ -168,14 +183,14 @@ export interface UbbEditorRef {
 - close 不匹配栈顶 → **就近闭合修复**：弹出到最近的同名标签（被弹出的内层标签视为在该位置闭合），记录 `mismatched`；栈内无同名 → 该 close 按普通文本处理并记录 `mismatched`
 - EOF 栈非空 → 全部自动闭合到文末，逐个记录 `unclosed`
 
-颜色校验：`#RGB` / `#RRGGBB`（大小写不敏感）；不合法 → 节点保留但 `color: undefined`，记录 `invalid-color`，渲染无色降级（AC-06）。
+值校验（含 color 特例）：`valuePattern` 不匹配或缺失 → 节点保留但 `value: undefined`，记录 `invalid-value`，渲染按无值降级；color 的 pattern 为 `#RGB` / `#RRGGBB`（大小写不敏感），校验通过时同时写入 `color`，不合法时 `color: undefined`、渲染无色（AC-06）。
 
 每个节点带 `range` / `contentRange`，供 transform 判定选区与标签的包含关系。
 
 ## 6. transform 规格
 
 - **wrap**：选区完整位于同名标签的 `contentRange` 内 → 改为 unwrap（解包）；否则包裹。选区恢复到新文本中包裹内容上（FR-10/12）
-- **insertEmpty**：`[tag][/tag]`，光标置于中间（FR-11）
+- **insertEmpty**：`[tag][/tag]`，光标置于中间（FR-11）；声明了 `valuePattern` 的标签插入 `[tag=][/tag]`，光标在 `=` 后
 - **replaceColor**：选区位于某 color 节点 `contentRange` 内 → 仅替换该标签颜色值，不产生嵌套（FR-18）；否则按 wrap 处理
 - 输出统一小写标签（FR-07）
 
@@ -199,7 +214,7 @@ export interface UbbEditorRef {
 | color（合法） | `<span style={{ color }}>` |
 | color（非法） | 直接渲染 children（无色降级） |
 | blank | `<span class="react-ubb__blank">`，`minWidth` 按原文可见长度估算（CJK 1em、拉丁 0.5em），空标签 `minWidth: 4em`，内容隐藏（下划线空位样式） |
-| 自定义标签 | `CustomTag.render` 优先，未提供时渲染 children |
+| 自定义标签 | `CustomTag.render({ children, node })` 优先（`node.value` 可用），未提供时渲染 children |
 | `\n` | `<br />` |
 
 `UbbView` props：`source`、`customTags?`、`className?`；默认标签集 `DEFAULT_TAGS`（含 blank）。
@@ -217,15 +232,17 @@ export interface UbbEditorRef {
 | `01-basic.spec.tsx` | 重写为 UbbEditor 骨架渲染（替代现有占位组件测试） |
 | `02-parser.spec.ts` | 白名单、嵌套、交错就近闭合、未闭合、非法颜色、`[[转义]]`、白名单外原样、大小写、可见字数 |
 | `03-transform.spec.ts` | wrap 选中 / 光标插入、幂等解包、跨界包裹、replaceColor、选区偏移恢复 |
-| `04-renderer.spec.tsx` | UbbView 各节点渲染、blank 空位宽度、非法色降级、转义、`\n`、customTags.render |
-| `05-editor.spec.tsx` | AC 中可 jsdom 化的用例：包裹交互、readOnly、快捷键、粘贴、maxLength、meta、validate |
+| `04-renderer.spec.tsx` | UbbView 各节点渲染、blank 空位宽度、非法色降级、转义、`\n`、customTags.render、值标签（valuePattern 通过 / 降级） |
+| `05-editor.spec.tsx` | AC 中可 jsdom 化的用例：包裹交互、readOnly、快捷键、粘贴、maxLength、meta、validate、customTags 工具栏追加与 shortcut 拦截、同名覆盖 |
 
 AC-07（性能）、AC-08（真机输入法）、AC-09（全键盘）、AC-15/16（视觉 / H5 对照）在 example demo 中手工验收。
 
 ## 11. 假设与边界
 
 - 颜色仅接受 3/6 位 hex，`rgb()` v1 不支持（FR-05 可选项）
+- 值属性为单值 `[name=value]`，不支持多属性（`[name a=1 b=2]` 按普通文本）
 - 白名单标签带意外属性（`[b=x]`）按普通文本处理
+- 扩展机制为增强型 `customTags` + `defineTag`；多标签 plugin 打包（聚合 locale / 工具栏分组）留待后续演进，不影响现有 API
 - 转义段内不嵌套解析；`[[` 未闭合到文末按字面渲染并报 `unclosed-escape`
 - `paired: false` 的单边标签 v1 不实现（TagSpec 预留字段）
 - maxLength 截断会以 AST 重建源文本（标签规范化为小写，文本内容无损）
