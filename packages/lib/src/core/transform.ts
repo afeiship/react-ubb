@@ -115,6 +115,9 @@ export function replaceColor(
 
 // Doubling '[' alone is sufficient: ']' only matters inside an escape that a
 // '[' started, so a stray ']' parses as a literal and visible length survives.
+// Known limitation (accepted for v1): input with 2+ '[' chars inflates visible
+// length by one per extra '[' — the first '[[' opens an escape swallowing the
+// rest as literal (e.g. 'a[b[c' -> 'a[[b[[c' renders 'a[b[[c').
 export function escapeText(text: string): string {
   return text.replace(/\[/g, '[[');
 }
