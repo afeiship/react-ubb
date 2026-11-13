@@ -210,4 +210,8 @@ describe('plain', () => {
     const src = '[b]'.repeat(depth) + 'x' + '[/b]'.repeat(depth);
     expect(toPlainText(src)).toBe('x');
   });
+  it('keeps document order on repaired ASTs', () => {
+    expect(toPlainText('a[b]x[i]y[/b]z')).toBe('axyz');
+    expect(toPlainText('[b]a[i]bc')).toBe('abc');
+  });
 });
