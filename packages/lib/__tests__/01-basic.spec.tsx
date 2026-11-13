@@ -1,29 +1,55 @@
-/**
- * 基础渲染测试
- * 验证 ReactUbb 组件的基本渲染行为，包括：
- * - 默认 className 是否正确应用
- * - 自定义 className 是否能正确合并
- * - children 内容是否正常渲染
- */
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { createRef } from 'react';
 import '@testing-library/jest-dom';
-import ReactUbb from '../src';
+import UbbEditor from '../src';
 
-describe('ReactUbb', () => {
-  it('should render with default className', () => {
-    render(<ReactUbb>hello</ReactUbb>);
-    const el = screen.getByText('hello');
-    expect(el).toBeInTheDocument();
-    expect(el.closest('[data-component="react-ubb"]')).toBeInTheDocument();
+describe('UbbEditor basics', () => {
+  it('renders root, textarea and preview pane', () => {
+    render(<UbbEditor defaultValue={'[b]hi[/b]'} />);
+    expect(document.querySelector('[data-component="react-ubb"]')).toBeInTheDocument();
+    expect(document.querySelector('.react-ubb__textarea')).toBeInTheDocument();
+    expect(document.querySelector('.react-ubb__preview strong')).toBeInTheDocument();
   });
 
-  it('should merge custom className', () => {
-    const { container } = render(<ReactUbb className="custom-class">test</ReactUbb>);
-    expect(container.firstChild).toHaveClass('react-ubb', 'custom-class');
+  it('controlled: value + onChange(source, meta)', () => {
+    const onChange = vi.fn();
+    render(<UbbEditor value="abc" onChange={onChange} />);
+    const ta = document.querySelector('.react-ubb__textarea') as HTMLTextAreaElement;
+    fireEvent.input(ta, { target: { value: 'abcd' } });
+    expect(onChange).toHaveBeenCalledWith('abcd', expect.objectContaining({ visibleLength: 4, sourceLength: 4 }));
   });
 
-  it('should render children', () => {
-    render(<ReactUbb>child content</ReactUbb>);
-    expect(screen.getByText('child content')).toBeInTheDocument();
+  it('readOnly: textarea readOnly and toolbar buttons disabled (AC-11)', () => {
+    render(<UbbEditor value="abc" readOnly />);
+    expect(document.querySelector('.react-ubb__textarea')).toHaveAttribute('readonly');
+    expect((screen.getByRole('button', { name: '加粗' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('mode=preview hides textarea, renders full preview (AC-15 前半)', () => {
+    render(<UbbEditor defaultValue={'[i]x[/i]'} mode="preview" />);
+    expect(document.querySelector('.react-ubb__textarea')).toBeNull();
+    expect(document.querySelector('.react-ubb__body em')).toBeInTheDocument();
+  });
+
+  it('ref API: getSource / getPlainText / validate / clear', () => {
+    const ref = createRef<any>();
+    render(<UbbEditor ref={ref} defaultValue={'[b]ab[/b]'} />);
+    expect(ref.current.getSource()).toBe('[b]ab[/b]');
+    expect(ref.current.getPlainText()).toBe('ab');
+    expect(ref.current.validate()).toBe(true);
+    ref.current.clear();
+    expect(ref.current.getSource()).toBe('');
+  });
+
+  it('validate() false when unclosed (AC-05)', () => {
+    const ref = createRef<any>();
+    render(<UbbEditor ref={ref} defaultValue={'[b]x'} />);
+    expect(ref.current.validate()).toBe(false);
+  });
+
+  it('toolbar buttons expose aria-label / aria-pressed (NFR-05)', () => {
+    render(<UbbEditor defaultValue="abc" />);
+    const bold = screen.getByRole('button', { name: '加粗' });
+    expect(bold).toHaveAttribute('aria-pressed', 'false');
   });
 });
