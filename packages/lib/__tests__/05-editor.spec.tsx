@@ -27,6 +27,14 @@ describe('UndoStack', () => {
     expect(s.undo(b)).toEqual(a);
     expect(s.undo(a)).toBeUndefined();
   });
+  it('push clears the redo future', () => {
+    const s = new UndoStack();
+    const a = { source: 'a', selection: { start: 0, end: 0 } };
+    s.push(a);
+    s.undo({ source: 'b', selection: { start: 0, end: 0 } });
+    s.push({ source: 'c', selection: { start: 0, end: 0 } });
+    expect(s.redo({ source: 'c', selection: { start: 0, end: 0 } })).toBeUndefined();
+  });
   it('caps history at 50', () => {
     const s = new UndoStack();
     for (let i = 0; i < 55; i++) s.push({ source: String(i), selection: { start: 0, end: 0 } });

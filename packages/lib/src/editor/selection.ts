@@ -4,6 +4,8 @@ export interface Snapshot {
   source: string;
   selection: Sel;
 }
+// Snapshots are stored by reference — treat them as immutable (do not mutate
+// an object after handing it to push/undo/redo).
 
 export function getSelection(ta: HTMLTextAreaElement): Sel {
   return { start: ta.selectionStart, end: ta.selectionEnd };
@@ -12,6 +14,15 @@ export function getSelection(ta: HTMLTextAreaElement): Sel {
 // Replace [sel.start, sel.end) with text via ONE execCommand('insertText') call
 // (single native undo unit). Falls back to setRangeText (returns false) when
 // execCommand is unavailable (jsdom) or fails — caller then owns undo via UndoStack.
+//
+// Contract (callers must honor):
+// - Does NOT check readOnly/disabled: setRangeText mutates a readOnly textarea
+//   silently. Guard before calling.
+// - Native path relies on execCommand firing a real `input` event to sync React
+//   state; the fallback path fires none — callers must update state themselves
+//   when false is returned (the two paths complement each other).
+// - Steals focus and moves the caret (focus → setSelectionRange → execCommand
+//   must stay in the same synchronous task for Safari).
 export function replaceRange(
   ta: HTMLTextAreaElement,
   text: string,
