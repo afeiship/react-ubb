@@ -1,5 +1,8 @@
-import { render } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { createRef } from 'react';
+import UbbEditor from '../src';
+import { definePlugin } from '../src/renderer/types';
 import { Snapshot, UndoStack, matchShortcut, replaceRange } from '../src/editor/selection';
 import { mergeLocale } from '../src/editor/locale';
 import { zhCN } from '../src/locale/zh-cn';
@@ -82,5 +85,104 @@ describe('locale', () => {
     const merged = mergeLocale(zhCN, { bold: 'B' });
     expect(merged.bold).toBe('B');
     expect(merged.italic).toBe('斜体');
+  });
+});
+
+const ta = () => document.querySelector('.react-ubb__textarea') as HTMLTextAreaElement;
+const select = (start: number, end: number) => {
+  const el = ta();
+  el.setSelectionRange(start, end);
+  fireEvent.select(el);
+};
+
+describe('editor interactions', () => {
+  it('AC-01: select + bold button wraps and preview shows bold', () => {
+    render(<UbbEditor defaultValue="abc" />);
+    select(0, 3);
+    fireEvent.click(screen.getByRole('button', { name: '加粗' }));
+    expect(ta().value).toBe('[b]abc[/b]');
+    expect(document.querySelector('.react-ubb__preview strong')).toBeInTheDocument();
+  });
+
+  it('AC-02: clicking bold again unwraps', () => {
+    render(<UbbEditor defaultValue={'[b]abc[/b]'} />);
+    select(3, 6);
+    fireEvent.click(screen.getByRole('button', { name: '加粗' }));
+    expect(ta().value).toBe('abc');
+  });
+
+  it('AC-03: bold inside selection + color via ref.insertTag nests once', () => {
+    const ref = createRef<any>();
+    render(<UbbEditor ref={ref} defaultValue={'[b]abc[/b]'} />);
+    select(3, 6);
+    ref.current.insertTag('color', '#FF0000');
+    expect(ta().value).toBe('[b][color=#FF0000]abc[/color][/b]');
+  });
+
+  it('AC-13 前半: blank button wraps selection', () => {
+    render(<UbbEditor defaultValue="答案" />);
+    select(0, 2);
+    fireEvent.click(screen.getByRole('button', { name: '插空' }));
+    expect(ta().value).toBe('[blank]答案[/blank]');
+  });
+
+  it('FR-13: shortcut mod+b wraps focused editor', () => {
+    render(<UbbEditor defaultValue="abc" />);
+    select(0, 3);
+    fireEvent.keyDown(ta(), { key: 'b', ctrlKey: true });
+    expect(ta().value).toBe('[b]abc[/b]');
+  });
+
+  it('FR-38: plugin shortcut intercepted when focused', () => {
+    const mark = definePlugin({ name: 'mark', label: 'M', shortcut: 'mod+m', render: ({ children }) => <u>{children}</u> });
+    render(<UbbEditor defaultValue="abc" plugins={[mark]} />);
+    select(0, 3);
+    fireEvent.keyDown(ta(), { key: 'm', ctrlKey: true });
+    expect(ta().value).toBe('[mark]abc[/mark]');
+  });
+
+  it('AC-11: readOnly shortcuts do nothing', () => {
+    render(<UbbEditor defaultValue="abc" readOnly />);
+    select(0, 3);
+    fireEvent.keyDown(ta(), { key: 'b', ctrlKey: true });
+    expect(ta().value).toBe('abc');
+  });
+
+  it('AC-04: paste takes text/plain only', () => {
+    render(<UbbEditor defaultValue="ab" />);
+    select(2, 2);
+    fireEvent.paste(ta(), { clipboardData: { getData: (t: string) => (t === 'text/plain' ? '<b>x</b>' : 'SHOULD NOT APPEAR') } });
+    expect(ta().value).toBe('ab<b>x</b>');
+  });
+
+  it('FR-25: stripPaste removes tags from pasted text', () => {
+    render(<UbbEditor defaultValue="" stripPaste />);
+    fireEvent.paste(ta(), { clipboardData: { getData: () => '[b]x[/b]' } });
+    expect(ta().value).toBe('x');
+  });
+
+  it('FR-29: maxLength truncates by visible length keeping tags paired', () => {
+    render(<UbbEditor defaultValue="abcdef" maxLength={4} />);
+    fireEvent.input(ta(), { target: { value: 'a[b]bc[/b]def' } });
+    expect(ta().value).toBe('a[b]bc[/b]d');
+  });
+
+  it('AC-10: fallback undo restores previous source and selection', () => {
+    render(<UbbEditor defaultValue="abc" />);
+    select(0, 3);
+    fireEvent.click(screen.getByRole('button', { name: '加粗' }));
+    expect(ta().value).toBe('[b]abc[/b]');
+    fireEvent.keyDown(ta(), { key: 'z', ctrlKey: true });
+    expect(ta().value).toBe('abc');
+    expect(ta().selectionStart).toBe(0);
+    expect(ta().selectionEnd).toBe(3);
+    fireEvent.keyDown(ta(), { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(ta().value).toBe('[b]abc[/b]');
+  });
+
+  it('AC-05: unclosed input shows warning alert', () => {
+    const { container } = render(<UbbEditor defaultValue="" />);
+    fireEvent.input(ta(), { target: { value: '[b]x' } });
+    expect(container.querySelector('.react-ubb__warn')).toBeInTheDocument();
   });
 });

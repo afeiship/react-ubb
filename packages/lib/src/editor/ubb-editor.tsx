@@ -1,9 +1,11 @@
 import cx from 'classnames';
 import {
+  ClipboardEvent as ReactClipboardEvent,
   CSSProperties,
   ForwardedRef,
   FormEvent,
   forwardRef,
+  KeyboardEvent as ReactKeyboardEvent,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -13,6 +15,7 @@ import {
 import {
   DEFAULT_TAGS,
   UbbNode,
+  escapeText,
   isTextNode,
   mergeTags,
   parse,
@@ -28,7 +31,7 @@ import { CustomTag } from '../renderer/types';
 import { enUS } from '../locale/en-us';
 import { zhCN } from '../locale/zh-cn';
 import { Labels, mergeLocale } from './locale';
-import { getSelection, replaceRange } from './selection';
+import { getSelection, matchShortcut, replaceRange, Snapshot, UndoStack } from './selection';
 import Toolbar from './toolbar';
 
 const CLASS_NAME = 'react-ubb';
@@ -95,6 +98,7 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
     plugins,
     enabledTags,
     disabledTags,
+    stripPaste,
     locale = 'zh-CN',
     labels,
     theme = 'light',
@@ -116,6 +120,9 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   const [sel, setSel] = useState<Sel>({ start: 0, end: 0 });
   const [manualPreview, setManualPreview] = useState(source);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const composingRef = useRef(false);
+  const customUndoRef = useRef(false);
+  const undoRef = useRef(new UndoStack());
 
   const i18n = useMemo(() => mergeLocale(locale === 'en-US' ? enUS : zhCN, labels), [locale, labels]);
 
@@ -143,7 +150,7 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   // one native undo unit. replaceRange contract: native path fires a real input
   // event (handleInput syncs state); fallback returns false — sync manually.
   const applyTransform = (t: TransformResult | null) => {
-    if (!t || readOnly || disabled || mode !== 'edit') return;
+    if (!t || readOnly || disabled || mode !== 'edit' || composingRef.current) return;
     const ta = taRef.current;
     if (!ta) return;
     let next = t;
@@ -155,10 +162,15 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
         next = { source: truncated, selection: { start: clamp(t.selection.start), end: clamp(t.selection.end) } };
       }
     }
+    // capture the pre-transform state BEFORE replaceRange moves the caret; the
+    // first fallback must push it too, or its own pre-state is unrecoverable
+    const prev: Snapshot = { source, selection: currentSel() };
     // programmatic setSelectionRange fires no `select` event — sel is the sole
     // input of activeNames, so sync it here for BOTH paths or it goes stale.
     setSel(next.selection);
     const native = replaceRange(ta, next.source, { start: 0, end: source.length }, next.selection);
+    if (!native) customUndoRef.current = true; // fallback → self-managed undo from now on
+    if (customUndoRef.current) undoRef.current.push(prev);
     if (!native) {
       if (!isControlled) setInnerValue(next.source);
       onChange?.(next.source, computeMeta(next.source, next.selection));
@@ -222,6 +234,64 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
       }
     }
     applyTransform({ source: cur, selection: curSel });
+  };
+
+  // undo/redo replay bypasses applyTransform on purpose: restoring must not
+  // re-enter the history (it would push the state being left) nor re-clamp
+  const applySnapshot = (snap: Snapshot) => {
+    const taEl = taRef.current;
+    if (!taEl) return;
+    taEl.value = snap.source;
+    taEl.setSelectionRange(snap.selection.start, snap.selection.end);
+    setSel(snap.selection);
+    if (!isControlled) setInnerValue(snap.source);
+    onChange?.(snap.source, computeMeta(snap.source, snap.selection));
+  };
+
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (readOnly || disabled) return;
+    const ev = e.nativeEvent;
+    if (matchShortcut(ev, 'mod+b')) {
+      e.preventDefault();
+      handleTagClick('b');
+      return;
+    }
+    if (matchShortcut(ev, 'mod+i')) {
+      e.preventDefault();
+      handleTagClick('i');
+      return;
+    }
+    for (const p of plugins ?? []) {
+      if (p.shortcut && matchShortcut(ev, p.shortcut)) {
+        e.preventDefault();
+        handleTagClick(p.name);
+        return;
+      }
+    }
+    if (customUndoRef.current) {
+      if (matchShortcut(ev, 'mod+z')) {
+        e.preventDefault();
+        const snap = undoRef.current.undo({ source, selection: currentSel() });
+        if (snap) applySnapshot(snap);
+        return;
+      }
+      if (matchShortcut(ev, 'mod+shift+z')) {
+        e.preventDefault();
+        const snap = undoRef.current.redo({ source, selection: currentSel() });
+        if (snap) applySnapshot(snap);
+      }
+    }
+  };
+
+  const handlePaste = (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
+    if (readOnly || disabled || composingRef.current) return;
+    e.preventDefault();
+    let text = e.clipboardData.getData('text/plain');
+    if (stripPaste) text = escapeText(toPlainText(text, tags));
+    const s = currentSel();
+    const next = source.slice(0, s.start) + text + source.slice(s.end);
+    const caret = s.start + text.length;
+    applyTransform({ source: next, selection: { start: caret, end: caret } });
   };
 
   useImperativeHandle(
@@ -308,6 +378,14 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
             disabled={disabled}
             placeholder={placeholder ?? i18n.placeholder}
             onInput={handleInput}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            onCompositionStart={() => {
+              composingRef.current = true;
+            }}
+            onCompositionEnd={() => {
+              composingRef.current = false;
+            }}
             onSelect={(e) => setSel(getSelection(e.currentTarget))}
           />
         )}
