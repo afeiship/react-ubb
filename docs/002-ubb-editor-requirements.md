@@ -38,7 +38,7 @@
 | 渲染器 | 将源文本解析为安全 React 元素（AST）的模块 |
 | 包裹 | 在选区前后插入成对标签 |
 | 解包 | 移除选区外层已有的成对标签 |
-| 插空 | 业务自定义标签 `[blank]...[/blank]`，用于标记填空位，经 customTags 注册启用（见 FR-38） |
+| 插空 | 业务自定义标签 `[blank]...[/blank]`，用于标记填空位，经 plugins 注册启用（见 FR-38） |
 
 ## 3. 目标与非目标
 
@@ -79,20 +79,20 @@
 | --- | --- |
 | FR-01 | 输入层使用原生 `textarea`，不使用 `contenteditable`。理由：contenteditable 是富文本入口，光标、选区、撤销栈、输入法组合态均不可控，且极易引入 HTML。 |
 | FR-02 | 布局默认左右双栏（左源文本 / 右预览），支持三种布局：仅编辑、左右分栏、上下分栏；另提供全屏模式。组件自带"编辑 / 预览"双模式切换（`mode`：'edit' | 'preview'）：预览模式下隐藏编辑区，整区只读渲染；工具栏右侧提供切换按钮；`mode` 可受控传入，不传时由组件内部维护。 |
-| FR-03 | 工具栏固定于编辑区上方，内置按钮：加粗、斜体、颜色、插空；customTags 注册的业务标签按注册顺序追加；可选按钮：清除当前样式、清空内容。 |
+| FR-03 | 工具栏固定于编辑区上方，内置按钮：加粗、斜体、颜色、插空；plugins 注册的业务插件标签按注册顺序追加；可选按钮：清除当前样式、清空内容。 |
 
 ### 5.2 标签规范
 
 | 编号 | 需求 |
 | --- | --- |
-| FR-04 | 内置合法标签集合（唯一白名单）如下；业务自定义标签经 customTags 注册后同样进入白名单（见 5.10）： |
+| FR-04 | 内置合法标签集合（唯一白名单）如下；业务插件标签经 plugins 注册后同样进入白名单（见 5.10）： |
 
 | 标签 | 样式 |
 | --- | --- |
 | `[b]...[/b]` | 加粗 |
 | `[i]...[/i]` | 斜体 |
 | `[color=#RRGGBB]...[/color]` | 字体颜色 |
-| `[blank]...[/blank]` | 插空（业务自定义，经 customTags 注册） |
+| `[blank]...[/blank]` | 插空（业务插件，经 plugins 注册） |
 
 | 编号 | 需求 |
 | --- | --- |
@@ -155,7 +155,7 @@
 | FR-31 | 受控用法：`props.value + onChange(sourceText, meta)`；非受控用法：`defaultValue` + 内部状态。 |
 | FR-32 | meta 建议字段：`visibleLength`、`sourceLength`、`hasInvalidTag`、`hasUnclosedTag`、`selection {start, end}`。 |
 | FR-33 | ref 暴露方法：`focus()`、`blur()`、`insertTag(name)`、`getSource()`、`getPlainText()`、`clear()`、`validate()`。 |
-| FR-34 | 可配 props：`labels`（i18n 文案）、`theme`（light/dark）、`readOnly`、`disabled`、`placeholder`、`maxLength`、`showPreview`（是否显示预览区）、`previewMode`（分栏形态：左右 / 上下）、`mode`（'edit' | 'preview'，整体模式切换，见 FR-02）、`enabledTags`、`disabledTags`、`customTags`（自定义标签注册，见 5.10）。 |
+| FR-34 | 可配 props：`labels`（i18n 文案）、`theme`（light/dark）、`readOnly`、`disabled`、`placeholder`、`maxLength`、`showPreview`（是否显示预览区）、`previewMode`（分栏形态：左右 / 上下）、`mode`（'edit' | 'preview'，整体模式切换，见 FR-02）、`enabledTags`、`disabledTags`、`plugins`（插件注册，见 5.10）。 |
 | FR-35 | 草稿：可选 `autoSave`（localStorage，key 可配，默认关闭），防止误刷新丢内容。 |
 
 ### 5.9 移动端
@@ -169,7 +169,7 @@
 
 | 编号 | 需求 |
 | --- | --- |
-| FR-38 | 支持通过 `customTags` 注册业务自定义标签，注册项包含：`name`（标签名）、`label`（工具栏文案 / aria-label）、`paired`（是否成对，默认 true）、`render`（预览渲染方式）。注册后进入标签白名单，解析、包裹 / 解包、嵌套闭合修复、校验、可见字数统计全流程与内置标签一致。 |
+| FR-38 | 支持通过 `plugins` prop 注册业务插件标签（推荐经 `definePlugin` 定义），注册项包含：`name`（标签名）、`label`（工具栏文案 / aria-label）、`icon`（可选图标）、`shortcut`（可选快捷键）、`toolbar`（是否显示按钮，默认 true）、`paired`（是否成对，默认 true）、`valuePattern`（可选值属性校验，支持 `[name=value]`）、`render`（预览渲染方式）。注册后进入标签白名单，解析、包裹 / 解包、嵌套闭合修复、校验、可见字数统计全流程与内置标签一致。 |
 | FR-39 | 插空 `[blank]...[/blank]`：无属性的业务标签，随组件交付默认注册配置。工具栏显示"插空"按钮；选中文本包裹为 `[blank]...[/blank]`，未选中插入空标签并将光标置于标签中间（行为同 FR-11）；幂等解包规则同 FR-12。 |
 | FR-40 | 插空预览默认渲染为下划线空位：空标签渲染为固定宽度空位；包裹文字时按文字长度估算空位宽度、原文不显示。具体表现可由 `render` 配置，最终方案见 Q7。 |
 
@@ -178,7 +178,7 @@
 | 编号 | 需求 |
 | --- | --- |
 | FR-41 | 渲染能力独立入口：解析器（含 AST 类型定义）与只读渲染组件不依赖编辑器代码，通过子路径导出（如 `react-ubb/core`、`react-ubb/renderer`）单独引入，H5 页面不带入编辑器与取色库体积。 |
-| FR-42 | 提供只读渲染 React 组件 `<UbbView source={string} />`，props：`source`、`customTags`（与编辑器同一注册结构）、`className`；编辑器内置预览与该组件共用同一解析与渲染实现，保证两端表现一致（就近闭合修复、非法颜色降级、插空空位等行为一致）。 |
+| FR-42 | 提供只读渲染 React 组件 `<UbbView source={string} />`，props：`source`、`plugins`（与编辑器同一注册结构）、`className`；编辑器内置预览与该组件共用同一解析与渲染实现，保证两端表现一致（就近闭合修复、非法颜色降级、插空空位等行为一致）。 |
 | FR-43 | 提供纯函数 `parse(source): AST` 与 `toPlainText(source): string`（零 React 依赖）；AST 为纯 JSON 结构（见 FR-22），非 React 宿主可自行遍历渲染。 |
 | FR-44 | 渲染组件内置轻量样式（类名统一前缀，同 NFR-08），样式随组件注入或提供独立 CSS 文件，H5 引入即用。 |
 
@@ -272,7 +272,7 @@ packages/ubb-editor/
 | AC-11 | readOnly 状态下工具栏点击与快捷键均无效果。 |
 | AC-12 | 组件输出满足字符集约定：仅允许白名单标签与合法颜色值，其余方括号按普通文本保留。 |
 | AC-13 | 选中"答案"点击插空，源文本为 `[blank]答案[/blank]`，预览显示下划线空位；再次点击插空，源文本恢复为"答案"。 |
-| AC-14 | 经 customTags 注册的自定义标签与内置标签走同一解析 / 校验 / 包裹链路：交错闭合可被就近修复，未闭合触发提示，`validate()` 返回 false。 |
+| AC-14 | 经 plugins 注册的插件标签与内置标签走同一解析 / 校验 / 包裹链路：交错闭合可被就近修复，未闭合触发提示，`validate()` 返回 false。 |
 | AC-15 | 点击"预览"切换后编辑区隐藏、整区只读渲染；切回编辑后内容与光标不丢失。 |
 | AC-16 | H5 页面仅引入 renderer 子路径渲染同一份源文本，结果与编辑器内预览一致（含插空空位、非法颜色降级、就近闭合修复），且未引入编辑器代码。 |
 
