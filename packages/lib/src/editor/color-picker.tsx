@@ -34,7 +34,7 @@ export interface ColorPickerProps {
 }
 
 export default function ColorPicker({ colors = DEFAULT_COLORS, onSelect, onClose }: ColorPickerProps) {
-  const [hex, setHex] = useState(colors[0]);
+  const [hex, setHex] = useState(colors[0] ?? '#000000');
   const [recent, setRecent] = useState<string[]>(() => loadRecent());
 
   useEffect(() => {
@@ -45,8 +45,9 @@ export default function ColorPicker({ colors = DEFAULT_COLORS, onSelect, onClose
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const commit = (value: string) => {
-    if (!COLOR_PATTERN.test(value)) return;
+  const commit = (raw: string) => {
+    if (!COLOR_PATTERN.test(raw)) return;
+    const value = raw.toLowerCase();
     const next = [value, ...recent.filter((c) => c !== value)].slice(0, RECENT_MAX);
     setRecent(next);
     saveRecent(next);
@@ -92,7 +93,7 @@ export default function ColorPicker({ colors = DEFAULT_COLORS, onSelect, onClose
           />
         </div>
         {recent.length > 0 && (
-          <div className="react-ubb__swatches" data-testid="recent">
+          <div className="react-ubb__swatches" aria-label="recent colors">
             {recent.map((c) => (
               <button
                 key={c}

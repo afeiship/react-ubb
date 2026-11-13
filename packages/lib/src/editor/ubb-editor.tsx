@@ -354,8 +354,8 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   // leaving edit mode unmounts the textarea; a stale-open panel would resurface
   // on return — close it at the source instead
   useEffect(() => {
-    if (mode !== 'edit') setColorOpen(false);
-  }, [mode]);
+    if (mode !== 'edit' || readOnly || disabled) setColorOpen(false);
+  }, [mode, readOnly, disabled]);
 
   const showPreviewPane = showPreview && mode === 'edit';
   const previewBody =

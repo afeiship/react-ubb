@@ -263,6 +263,17 @@ describe('color picker', () => {
     expect(ta().value).toBe('[color=#000000]abc[/color]');
   });
 
+  it('invalid hex is ignored: no wrap, panel stays open', () => {
+    render(<UbbEditor defaultValue="abc" />);
+    select(0, 3);
+    fireEvent.click(screen.getByRole('button', { name: '颜色' }));
+    const input = document.querySelector('.react-ubb__hex-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'zz' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(ta().value).toBe('abc');
+    expect(document.querySelector('.react-ubb__color-panel')).toBeInTheDocument();
+  });
+
   it('FR-19: Esc closes panel; overlay click closes', () => {
     render(<UbbEditor defaultValue="abc" />);
     fireEvent.click(screen.getByRole('button', { name: '颜色' }));
