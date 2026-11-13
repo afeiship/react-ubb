@@ -2,6 +2,7 @@ import { render, fireEvent, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { createRef } from 'react';
 import UbbEditor from '../src';
+import ColorPicker, { DEFAULT_COLORS } from '../src/editor/color-picker';
 import { definePlugin } from '../src/renderer/types';
 import { Snapshot, UndoStack, matchShortcut, replaceRange } from '../src/editor/selection';
 import { mergeLocale } from '../src/editor/locale';
@@ -222,5 +223,95 @@ describe('editor interactions', () => {
     fireEvent.input(ta(), { target: { value: 'abcXY' } });
     fireEvent.keyDown(ta(), { key: 'z', ctrlKey: true, shiftKey: true });
     expect(ta().value).toBe('abcXY');
+  });
+});
+
+describe('color picker', () => {
+  // Array.from (not spread): NodeListOf is not iterable under lib without
+  // dom.iterable / es5 target — keeps `tsc --noEmit` clean on project files
+  const swatches = () => Array.from(document.querySelectorAll<HTMLElement>('.react-ubb__swatch'));
+
+  // jsdom 29 ships no localStorage — memory-backed stand-in so the component's
+  // persistence path (real localStorage in browsers, guarded by try/catch
+  // where unavailable) is exercised through the same interface
+  beforeAll(() => {
+    if (!(globalThis as { localStorage?: Storage }).localStorage) {
+      const mem = new Map<string, string>();
+      (globalThis as { localStorage?: Storage }).localStorage = {
+        getItem: (k) => (mem.has(k) ? mem.get(k)! : null),
+        setItem: (k, v) => void mem.set(k, v),
+        removeItem: (k) => void mem.delete(k),
+        clear: () => void mem.clear(),
+      } as Storage;
+    }
+  });
+
+  it('AC-03: select in bold + pick first swatch → nested once', () => {
+    render(<UbbEditor defaultValue={'[b]abc[/b]'} />);
+    select(3, 6);
+    fireEvent.click(screen.getByRole('button', { name: '颜色' }));
+    expect(document.querySelector('.react-ubb__color-panel')).toBeInTheDocument();
+    fireEvent.click(swatches()[0]); // DEFAULT_COLORS[0] = '#000000'
+    expect(ta().value).toBe('[b][color=#000000]abc[/color][/b]');
+  });
+
+  it('FR-18: pick again inside color replaces value, no nesting', () => {
+    render(<UbbEditor defaultValue={'[color=#FF0000]abc[/color]'} />);
+    select(15, 18); // content 'abc' at [15,18)
+    fireEvent.click(screen.getByRole('button', { name: '颜色' }));
+    fireEvent.click(swatches()[0]); // #000000
+    expect(ta().value).toBe('[color=#000000]abc[/color]');
+  });
+
+  it('FR-19: Esc closes panel; overlay click closes', () => {
+    render(<UbbEditor defaultValue="abc" />);
+    fireEvent.click(screen.getByRole('button', { name: '颜色' }));
+    expect(document.querySelector('.react-ubb__color-panel')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(document.querySelector('.react-ubb__color-panel')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '颜色' }));
+    fireEvent.click(document.querySelector('.react-ubb__overlay')!);
+    expect(document.querySelector('.react-ubb__color-panel')).toBeNull();
+  });
+
+  it('hex input commits on Enter with valid value; invalid ignored', () => {
+    render(<UbbEditor defaultValue="abc" />);
+    select(0, 3);
+    fireEvent.click(screen.getByRole('button', { name: '颜色' }));
+    const input = document.querySelector('.react-ubb__hex-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '#00FF00' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(ta().value).toBe('[color=#00FF00]abc[/color]');
+    // panel closed after commit
+    expect(document.querySelector('.react-ubb__color-panel')).toBeNull();
+  });
+
+  it('no selection: picking color inserts empty pair with cursor inside', () => {
+    const ref = createRef<any>();
+    render(<UbbEditor ref={ref} defaultValue="abc" />);
+    ref.current.focus();
+    select(3, 3); // collapsed at end
+    fireEvent.click(screen.getByRole('button', { name: '颜色' }));
+    fireEvent.click(swatches()[0]);
+    // collapsed selection → wrapTag degenerates to empty pair insertion with selection shifted
+    expect(ta().value).toBe('abc[color=#000000][/color]');
+  });
+
+  it('recent colors capped at 8, most-recent-first, persisted', () => {
+    localStorage.clear();
+    render(<ColorPicker colors={DEFAULT_COLORS} onSelect={() => {}} onClose={() => {}} />);
+    const input = () => document.querySelector('.react-ubb__hex-input') as HTMLInputElement;
+    for (const c of ['#111111', '#222222', '#333333', '#444444', '#555555', '#666666', '#777777', '#888888', '#999999']) {
+      fireEvent.change(input(), { target: { value: c } });
+      fireEvent.keyDown(input(), { key: 'Enter' });
+    }
+    const recent = JSON.parse(localStorage.getItem('react-ubb-recent-colors')!);
+    expect(recent).toHaveLength(8);
+    expect(recent[0]).toBe('#999999');
+  });
+
+  it('readOnly: color button disabled (toolbar already handles), panel not openable', () => {
+    render(<UbbEditor defaultValue="abc" readOnly />);
+    expect((screen.getByRole('button', { name: '颜色' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

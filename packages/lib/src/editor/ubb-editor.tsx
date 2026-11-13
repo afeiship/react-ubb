@@ -24,6 +24,7 @@ import {
   Sel,
   TransformResult,
   insertEmptyTag,
+  replaceColor,
   wrapTag,
 } from '../core';
 import { renderAst } from '../renderer/render-ast';
@@ -32,6 +33,7 @@ import { enUS } from '../locale/en-us';
 import { zhCN } from '../locale/zh-cn';
 import { Labels, mergeLocale } from './locale';
 import { getSelection, matchShortcut, replaceRange, Snapshot, UndoStack } from './selection';
+import ColorPicker from './color-picker';
 import Toolbar from './toolbar';
 
 const CLASS_NAME = 'react-ubb';
@@ -118,6 +120,7 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   };
 
   const [sel, setSel] = useState<Sel>({ start: 0, end: 0 });
+  const [colorOpen, setColorOpen] = useState(false);
   const [manualPreview, setManualPreview] = useState(source);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
@@ -348,6 +351,12 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
     wasOverLimit.current = overLimit;
   }, [overLimit, source]);
 
+  // leaving edit mode unmounts the textarea; a stale-open panel would resurface
+  // on return — close it at the source instead
+  useEffect(() => {
+    if (mode !== 'edit') setColorOpen(false);
+  }, [mode]);
+
   const showPreviewPane = showPreview && mode === 'edit';
   const previewBody =
     mode === 'preview' || showPreviewPane ? (
@@ -377,7 +386,7 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
         onModeChange={setMode}
         activeNames={activeNames}
         onTagClick={handleTagClick}
-        onColorClick={() => {}} // wired in Task 10
+        onColorClick={() => setColorOpen(true)}
         onClear={handleClear}
         onEmpty={() => applyTransform({ source: '', selection: { start: 0, end: 0 } })}
         onRefresh={() => setManualPreview(source)}
@@ -422,6 +431,17 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
         )}
         {showPreviewPane && <div className={`${CLASS_NAME}__preview`}>{previewBody}</div>}
       </div>
+      {colorOpen && mode === 'edit' && !readOnly && !disabled && (
+        <ColorPicker
+          colors={props.colors}
+          onSelect={(h) => {
+            const s = currentSel();
+            applyTransform(replaceColor(source, s, h, tags));
+            setColorOpen(false);
+          }}
+          onClose={() => setColorOpen(false)}
+        />
+      )}
     </div>
   );
 }
