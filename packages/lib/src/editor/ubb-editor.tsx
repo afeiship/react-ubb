@@ -205,7 +205,7 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   const handleClear = () => {
     let cur = source;
     let curSel = currentSel();
-    for (const name of activeNames) {
+    for (const name of Array.from(activeNames)) {
       const t = wrapTag(cur, curSel, name, undefined, tags); // inside → unwrap
       if (t) {
         cur = t.source;
