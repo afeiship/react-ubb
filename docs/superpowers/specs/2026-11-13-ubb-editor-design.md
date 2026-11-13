@@ -116,7 +116,6 @@ export const definePlugin: <T extends CustomTag>(plugin: T) => T;
 
 // core/parser.ts
 export function parse(source: string, tags: TagSpec[] = DEFAULT_TAGS): ParseResult;
-
 // core/plain.ts
 export function toPlainText(source: string, tags?: TagSpec[]): string;
 export function visibleLength(source: string, tags?: TagSpec[]): number;
@@ -167,6 +166,36 @@ export interface UbbEditorRef {
   clear(): void; validate(): boolean;   // errors.length === 0
 }
 ```
+
+### 4.1 自定义插件实例（示例代码，随 demo 与使用文档交付）
+
+以"重点标记"为例：`[mark]文字[/mark]` 渲染为 `<mark>`，`[mark=red|yellow]` 带值版本渲染带背景色标记，值非法时降级。
+
+```tsx
+import { definePlugin } from '@jswork/react-ubb/renderer';
+
+const markPlugin = definePlugin({
+  name: 'mark',              // → [mark]...[/mark] / [mark=value]...[/mark]
+  label: '重点',              // 工具栏文案 / aria-label
+  shortcut: 'mod+m',         // 可选：Cmd/Ctrl+M，仅编辑器聚焦时拦截
+  valuePattern: /^(red|yellow)$/,  // 可选：声明后支持 [mark=red]；缺省仅无值形式
+  render: ({ children, node }) => (
+    <mark style={{ background: node.value ?? 'transparent' }}>{children}</mark>
+  ),
+});
+
+// 编辑器侧：注册后工具栏追加按钮、支持快捷键、参与解析 / 校验 / 字数
+<UbbEditor
+  defaultValue="这是[mark=red]重点[/mark]内容"
+  plugins={[markPlugin]}
+  onChange={(source, meta) => console.log(source, meta)}
+/>
+
+// H5 侧：同一份插件定义，渲染结果与编辑器预览一致
+<UbbView source={source} plugins={[markPlugin]} />
+```
+
+要点：`valuePattern` 不匹配（如 `[mark=blue]`）→ 记录 `invalid-value`，渲染按无值降级、不吞字；`node.value` 供 render 读取原始值；与内置同名时可覆盖（如替换 blank 的默认渲染）。
 
 ## 5. 解析器规格（单遍状态机，不用正则做结构匹配）
 
