@@ -51,7 +51,7 @@ describe('parser', () => {
   it('parses b/i nesting with ranges', () => {
     const r = parse('a[b]b[i]c[/i][/b]d');
     expect(types(r.ast)).toEqual(['text', 'b', 'text', 'i', 'text', 'text']);
-    const b = r.ast[1];
+    const b = r.ast[1] as any;
     expect(b.range).toEqual([1, 17]);
     expect(b.contentRange).toEqual([4, 13]);
     expect(r.visibleLength).toBe(4); // a+b+c+d
@@ -111,7 +111,7 @@ describe('parser', () => {
   it('unclosed tag auto-closes at EOF with error', () => {
     const r = parse('a[b]bc');
     expect(r.ast[1].range).toEqual([1, 6]);
-    expect(r.ast[1].contentRange).toEqual([4, 6]);
+    expect((r.ast[1] as any).contentRange).toEqual([4, 6]);
     expect(r.errors[0].kind).toBe('unclosed');
     expect(r.visibleLength).toBe(3);
   });
@@ -142,5 +142,40 @@ describe('parser', () => {
   it('newline stays in text node', () => {
     const r = parse('a\nb');
     expect((r.ast[0] as any).text).toBe('a\nb');
+  });
+
+  it('6000-deep [b] nesting parses without recursion overflow', () => {
+    const depth = 6000;
+    const r = parse('[b]'.repeat(depth) + 'x' + '[/b]'.repeat(depth));
+    expect(r.errors).toEqual([]);
+    expect(r.visibleLength).toBe(1);
+    let node: any = r.ast[0];
+    for (let d = 0; d < depth - 1; d++) node = node.children[0];
+    expect(node.type).toBe('b');
+    expect(node.children[0]).toMatchObject({ type: 'text', text: 'x' });
+  });
+
+  it('3000-deep stack survives 5000 stray closes (O(1) nearest-match lookup)', () => {
+    const r = parse('[i]'.repeat(3000) + '[/b]'.repeat(5000) + 'x');
+    expect(r.errors.filter((e) => e.kind === 'mismatched')).toHaveLength(5000);
+    expect(r.errors.filter((e) => e.kind === 'unclosed')).toHaveLength(3000);
+    expect(r.visibleLength).toBe(5000 * 4 + 1);
+  });
+
+  it('value tag with 100-char value (token longer than any fixed window) parses', () => {
+    const value = 'r'.repeat(100);
+    const r = parse(`[mark=${value}]x[/mark]`, [
+      ...DEFAULT_TAGS,
+      { name: 'mark', valuePattern: /^r+$/ },
+    ]);
+    expect(r.ast[0]).toMatchObject({ type: 'mark', value });
+    expect(r.errors).toEqual([]);
+    expect(r.visibleLength).toBe(1);
+  });
+
+  it('brackets with no closing bracket anywhere stay literal', () => {
+    const r = parse('a[b[x');
+    expect(r.ast[0]).toMatchObject({ type: 'text', text: 'a[b[x' });
+    expect(r.errors).toEqual([]);
   });
 });

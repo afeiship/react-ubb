@@ -11,6 +11,9 @@ export type UbbNode =
 
 export type ParseErrorKind = 'unclosed' | 'mismatched' | 'invalid-value' | 'unclosed-escape';
 
+// the tag member's `type: string` absorbs 'text', so a plain === check does not narrow
+export const isTextNode = (n: UbbNode): n is Extract<UbbNode, { type: 'text' }> => n.type === 'text';
+
 export interface ParseError {
   kind: ParseErrorKind;
   pos: number; // offset into source text
