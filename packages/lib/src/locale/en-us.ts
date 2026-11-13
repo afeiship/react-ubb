@@ -14,4 +14,8 @@ export const enUS: Labels = {
   warnUnclosed: 'Unclosed tags found, fix before saving',
   warnInvalid: 'Invalid tags or color values found',
   placeholder: 'Type here, select text to apply styles',
+  colorPanelTitle: 'Color picker',
+  colorCustom: 'Custom color',
+  colorHex: 'Hex',
+  colorRecent: 'Recent',
 };

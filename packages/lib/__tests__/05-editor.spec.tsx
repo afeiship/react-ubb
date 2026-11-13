@@ -1,4 +1,4 @@
-import { render, fireEvent, screen } from '@testing-library/react';
+import { render, fireEvent, screen, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { createRef } from 'react';
 import UbbEditor from '../src';
@@ -8,6 +8,22 @@ import { Snapshot, UndoStack, matchShortcut, replaceRange } from '../src/editor/
 import { mergeLocale } from '../src/editor/locale';
 import { zhCN } from '../src/locale/zh-cn';
 import { enUS } from '../src/locale/en-us';
+
+// jsdom 29 ships no localStorage — memory-backed stand-in so the components'
+// persistence paths (real localStorage in browsers, guarded by try/catch
+// where unavailable) are exercised through the same interface. File-scoped:
+// covers both the color picker recents and the editor autoSave draft.
+beforeAll(() => {
+  if (!(globalThis as { localStorage?: Storage }).localStorage) {
+    const mem = new Map<string, string>();
+    (globalThis as { localStorage?: Storage }).localStorage = {
+      getItem: (k) => (mem.has(k) ? mem.get(k)! : null),
+      setItem: (k, v) => void mem.set(k, v),
+      removeItem: (k) => void mem.delete(k),
+      clear: () => void mem.clear(),
+    } as Storage;
+  }
+});
 
 describe('replaceRange', () => {
   it('falls back to setRangeText in jsdom and sets selection', () => {
@@ -106,11 +122,18 @@ const select = (start: number, end: number) => {
 
 describe('editor interactions', () => {
   it('AC-01: select + bold button wraps and preview shows bold', () => {
+    vi.useFakeTimers();
     render(<UbbEditor defaultValue="abc" />);
     select(0, 3);
     fireEvent.click(screen.getByRole('button', { name: '加粗' }));
     expect(ta().value).toBe('[b]abc[/b]');
+    // FR-24: the preview renders from the debounced source — settle the
+    // debounce before asserting (the wrap itself is still immediate)
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
     expect(document.querySelector('.react-ubb__preview strong')).toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it('AC-02: clicking bold again unwraps', () => {
@@ -231,21 +254,6 @@ describe('color picker', () => {
   // dom.iterable / es5 target — keeps `tsc --noEmit` clean on project files
   const swatches = () => Array.from(document.querySelectorAll<HTMLElement>('.react-ubb__swatch'));
 
-  // jsdom 29 ships no localStorage — memory-backed stand-in so the component's
-  // persistence path (real localStorage in browsers, guarded by try/catch
-  // where unavailable) is exercised through the same interface
-  beforeAll(() => {
-    if (!(globalThis as { localStorage?: Storage }).localStorage) {
-      const mem = new Map<string, string>();
-      (globalThis as { localStorage?: Storage }).localStorage = {
-        getItem: (k) => (mem.has(k) ? mem.get(k)! : null),
-        setItem: (k, v) => void mem.set(k, v),
-        removeItem: (k) => void mem.delete(k),
-        clear: () => void mem.clear(),
-      } as Storage;
-    }
-  });
-
   it('AC-03: select in bold + pick first swatch → nested once', () => {
     render(<UbbEditor defaultValue={'[b]abc[/b]'} />);
     select(3, 6);
@@ -324,5 +332,49 @@ describe('color picker', () => {
   it('readOnly: color button disabled (toolbar already handles), panel not openable', () => {
     render(<UbbEditor defaultValue="abc" readOnly />);
     expect((screen.getByRole('button', { name: '颜色' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('preview & autosave', () => {
+  it('preview debounced 200ms (FR-24)', () => {
+    vi.useFakeTimers();
+    render(<UbbEditor defaultValue="" />);
+    fireEvent.input(ta(), { target: { value: '[b]x[/b]' } });
+    expect(document.querySelector('.react-ubb__preview strong')).toBeNull();
+    // act: React 18 flushes the timer's setState in a microtask — advance
+    // synchronously inside act so the DOM is settled before asserting
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(document.querySelector('.react-ubb__preview strong')).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('over 20k chars freezes preview and shows refresh button (FR-24)', () => {
+    const long = 'x'.repeat(20001);
+    render(<UbbEditor defaultValue={long} />);
+    expect(screen.getByRole('button', { name: '刷新预览' })).toBeInTheDocument();
+    expect(document.querySelector('.react-ubb__preview')?.textContent?.length).toBe(0);
+  });
+
+  it('autoSave persists draft to localStorage (FR-35)', () => {
+    localStorage.clear();
+    render(<UbbEditor defaultValue="" autoSave={{ key: 'my-draft' }} />);
+    fireEvent.input(ta(), { target: { value: 'hello' } });
+    expect(localStorage.getItem('my-draft')).toBe('hello');
+  });
+
+  it('autoSave restores draft on mount when uncontrolled without defaultValue', () => {
+    localStorage.setItem('my-draft', 'restored');
+    render(<UbbEditor autoSave={{ key: 'my-draft' }} />);
+    expect(ta().value).toBe('restored');
+  });
+
+  it('color panel autofocuses hex input and returns focus to textarea on Esc', () => {
+    render(<UbbEditor defaultValue="abc" />);
+    fireEvent.click(screen.getByRole('button', { name: '颜色' }));
+    expect(document.querySelector('.react-ubb__hex-input')).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(ta()).toHaveFocus();
   });
 });

@@ -39,6 +39,15 @@ import Toolbar from './toolbar';
 const CLASS_NAME = 'react-ubb';
 const PREVIEW_LIMIT = 20000;
 
+function useDebounced<T>(value: T, delay = 200): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setV(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return v;
+}
+
 export interface UbbMeta {
   visibleLength: number;
   sourceLength: number;
@@ -101,6 +110,7 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
     enabledTags,
     disabledTags,
     stripPaste,
+    autoSave,
     locale = 'zh-CN',
     labels,
     theme = 'light',
@@ -121,7 +131,7 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
 
   const [sel, setSel] = useState<Sel>({ start: 0, end: 0 });
   const [colorOpen, setColorOpen] = useState(false);
-  const [manualPreview, setManualPreview] = useState(source);
+  const [manualPreview, setManualPreview] = useState('');
   const taRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
   const customUndoRef = useRef(false);
@@ -342,14 +352,47 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   );
 
   const overLimit = source.length > PREVIEW_LIMIT;
+  // preview parses the debounced source (FR-24): typing stays cheap; the
+  // editor result above (counter/validation/activeNames) still uses the
+  // immediate source
+  const debouncedSource = useDebounced(source, 200);
 
-  // when a doc crosses the limit the preview must show the content at the
-  // crossing point, not whatever was around at mount time
-  const wasOverLimit = useRef(false);
+  // over the limit the preview only renders a manual snapshot (refresh
+  // button); reset it on each crossing so a stale snapshot never resurfaces
   useEffect(() => {
-    if (overLimit && !wasOverLimit.current) setManualPreview(source);
-    wasOverLimit.current = overLimit;
-  }, [overLimit, source]);
+    if (overLimit) setManualPreview('');
+  }, [overLimit]);
+
+  const autoSaveKey = autoSave === true ? 'react-ubb-draft' : typeof autoSave === 'object' ? autoSave.key : undefined;
+
+  // persist the draft on every change; the mount run is skipped so a stored
+  // draft survives until the restore effect below has had its chance
+  const autoSaveInit = useRef(true);
+  useEffect(() => {
+    if (!autoSaveKey) return;
+    if (autoSaveInit.current) {
+      autoSaveInit.current = false;
+      return;
+    }
+    try {
+      localStorage.setItem(autoSaveKey, source);
+    } catch {
+      /* storage unavailable — ignore */
+    }
+  }, [source, autoSaveKey]);
+
+  // mount-time restore: uncontrolled AND no defaultValue
+  useEffect(() => {
+    if (!autoSaveKey || isControlled || defaultValue !== undefined) return;
+    try {
+      const draft = localStorage.getItem(autoSaveKey);
+      if (draft != null) setInnerValue(draft);
+    } catch {
+      /* ignore */
+    }
+    // mount-only: reads the key resolved on first render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // leaving edit mode unmounts the textarea; a stale-open panel would resurface
   // on return — close it at the source instead
@@ -360,7 +403,7 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   const showPreviewPane = showPreview && mode === 'edit';
   const previewBody =
     mode === 'preview' || showPreviewPane ? (
-      <>{renderAst(overLimit ? parse(manualPreview, tags).ast : result.ast, plugins)}</>
+      <>{renderAst(overLimit ? parse(manualPreview, tags).ast : parse(debouncedSource, tags).ast, plugins)}</>
     ) : null;
 
   return (
@@ -434,12 +477,21 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
       {colorOpen && mode === 'edit' && !readOnly && !disabled && (
         <ColorPicker
           colors={props.colors}
+          labels={{
+            title: i18n.colorPanelTitle,
+            custom: i18n.colorCustom,
+            hex: i18n.colorHex,
+            recent: i18n.colorRecent,
+          }}
           onSelect={(h) => {
             const s = currentSel();
             applyTransform(replaceColor(source, s, h, tags));
             setColorOpen(false);
           }}
-          onClose={() => setColorOpen(false)}
+          onClose={() => {
+            setColorOpen(false);
+            taRef.current?.focus();
+          }}
         />
       )}
     </div>

@@ -27,13 +27,33 @@ function saveRecent(list: string[]): void {
   }
 }
 
+export interface ColorPickerLabels {
+  title: string;
+  custom: string;
+  hex: string;
+  recent: string;
+}
+
+const DEFAULT_LABELS: ColorPickerLabels = {
+  title: 'Color picker',
+  custom: 'Custom color',
+  hex: 'Hex',
+  recent: 'Recent',
+};
+
 export interface ColorPickerProps {
   colors?: string[];
+  labels?: ColorPickerLabels;
   onSelect(hex: string): void;
   onClose(): void;
 }
 
-export default function ColorPicker({ colors = DEFAULT_COLORS, onSelect, onClose }: ColorPickerProps) {
+export default function ColorPicker({
+  colors = DEFAULT_COLORS,
+  labels = DEFAULT_LABELS,
+  onSelect,
+  onClose,
+}: ColorPickerProps) {
   const [hex, setHex] = useState(colors[0] ?? '#000000');
   const [recent, setRecent] = useState<string[]>(() => loadRecent());
 
@@ -61,7 +81,8 @@ export default function ColorPicker({ colors = DEFAULT_COLORS, onSelect, onClose
       <div
         className="react-ubb__color-panel"
         role="dialog"
-        aria-label="color picker"
+        aria-label={labels.title}
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="react-ubb__swatches">
@@ -79,13 +100,14 @@ export default function ColorPicker({ colors = DEFAULT_COLORS, onSelect, onClose
         <div className="react-ubb__color-custom">
           <input
             type="color"
-            aria-label="custom color"
+            aria-label={labels.custom}
             value={/^#[0-9a-f]{6}$/i.test(hex) ? hex : '#000000'}
             onChange={(e) => setHex(e.target.value)}
           />
           <input
             className="react-ubb__hex-input"
-            aria-label="hex"
+            aria-label={labels.hex}
+            autoFocus
             placeholder="#RRGGBB"
             value={hex}
             onChange={(e) => setHex(e.target.value)}
@@ -95,14 +117,14 @@ export default function ColorPicker({ colors = DEFAULT_COLORS, onSelect, onClose
           />
         </div>
         {recent.length > 0 && (
-          <div className="react-ubb__swatches" aria-label="recent colors">
+          <div className="react-ubb__swatches" aria-label={labels.recent}>
             {recent.map((c) => (
               <button
                 key={c}
                 type="button"
                 className="react-ubb__swatch"
                 style={{ background: c }}
-                aria-label={`recent ${c}`}
+                aria-label={`${labels.recent} ${c}`}
                 onClick={() => commit(c)}
               />
             ))}

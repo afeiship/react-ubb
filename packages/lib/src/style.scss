@@ -1,3 +1,81 @@
-//.react-ubb {
-//  color: red;
-//}
+// packages/lib/src/style.scss
+.react-ubb {
+  --ubb-border: #d9d9d9;
+  --ubb-bg: #fff;
+  --ubb-fg: #333;
+  --ubb-toolbar-bg: #fafafa;
+  --ubb-warn: #d46b08;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ubb-border);
+  border-radius: 6px;
+  background: var(--ubb-bg);
+  color: var(--ubb-fg);
+  font-size: 14px;
+
+  &--dark {
+    --ubb-border: #444;
+    --ubb-bg: #1f1f1f;
+    --ubb-fg: #eee;
+    --ubb-toolbar-bg: #2a2a2a;
+  }
+  &--fullscreen { position: fixed; inset: 0; z-index: 1000; border-radius: 0; }
+
+  &__toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+    padding: 6px 8px; border-bottom: 1px solid var(--ubb-border);
+    background: var(--ubb-toolbar-bg);
+  }
+  &__btn {
+    min-height: 28px; min-width: 32px; padding: 0 8px;
+    border: 1px solid transparent; border-radius: 4px; background: transparent;
+    color: inherit; cursor: pointer; font-size: 13px;
+    &:hover:not(:disabled) { background: rgba(0, 0, 0, 0.06); }
+    &--pressed { background: rgba(22, 119, 255, 0.12); border-color: rgba(22, 119, 255, 0.4); }
+    &:disabled { opacity: 0.4; cursor: not-allowed; }
+  }
+  &__counter { margin-left: auto; font-size: 12px; opacity: 0.75; }
+  &__mode { display: inline-flex; border: 1px solid var(--ubb-border); border-radius: 4px; overflow: hidden; }
+  &__warn { flex-basis: 100%; color: var(--ubb-warn); font-size: 12px; padding: 2px 0; }
+
+  &__body { display: flex; min-height: 160px; }
+  &--vertical &__body { flex-direction: column; }
+  &__textarea {
+    flex: 1; padding: 8px 10px; border: none; outline: none; resize: vertical;
+    background: var(--ubb-bg); color: var(--ubb-fg); font: inherit; min-width: 0;
+  }
+  &__preview {
+    flex: 1; padding: 8px 10px; border-left: 1px solid var(--ubb-border);
+    overflow: auto; min-width: 0;
+    &--full { border-left: none; }
+  }
+  &--vertical &__preview { border-left: none; border-top: 1px solid var(--ubb-border); }
+
+  &__blank {
+    display: inline-block; border-bottom: 1px solid currentColor;
+    min-height: 1em; vertical-align: baseline;
+  }
+
+  &__overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.25); display: flex; align-items: center; justify-content: center; z-index: 1100; }
+  &__color-panel {
+    background: var(--ubb-bg); border: 1px solid var(--ubb-border); border-radius: 8px;
+    padding: 12px; width: 280px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  &__swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+  &__swatch { width: 24px; height: 24px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, 0.2); cursor: pointer; }
+  &__color-custom { display: flex; gap: 8px; align-items: center; }
+  &__hex-input {
+    flex: 1; padding: 4px 8px; border: 1px solid var(--ubb-border); border-radius: 4px;
+    background: var(--ubb-bg); color: var(--ubb-fg); font-size: 13px;
+  }
+}
+
+.react-ubb-view { font-size: 14px; line-height: 1.6; }
+
+// Mobile (FR-36): ≥44px touch targets, color panel as bottom sheet
+@media (max-width: 640px) {
+  .react-ubb__btn { min-height: 44px; min-width: 44px; }
+  .react-ubb__overlay { align-items: flex-end; }
+  .react-ubb__color-panel { width: 100%; border-radius: 12px 12px 0 0; }
+}

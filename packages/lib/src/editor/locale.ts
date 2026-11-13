@@ -12,6 +12,10 @@ export interface Labels {
   warnUnclosed: string;
   warnInvalid: string;
   placeholder: string;
+  colorPanelTitle: string;
+  colorCustom: string;
+  colorHex: string;
+  colorRecent: string;
 }
 
 export function mergeLocale(base: Labels, patch?: Partial<Labels>): Labels {
