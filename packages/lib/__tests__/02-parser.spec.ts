@@ -1,5 +1,6 @@
 import { BUILT_IN_TAGS, BLANK_TAG, DEFAULT_TAGS, mergeTags, COLOR_PATTERN } from '../src/core/tags';
 import { parse } from '../src/core/parser';
+import { toPlainText, visibleLength } from '../src/core/plain';
 
 describe('tags', () => {
   it('exports built-in b/i/color with color valuePattern', () => {
@@ -185,5 +186,28 @@ describe('parser', () => {
     const r = parse('a[b[x');
     expect(r.ast[0]).toMatchObject({ type: 'text', text: 'a[b[x' });
     expect(r.errors).toEqual([]);
+  });
+});
+
+describe('plain', () => {
+  it('strips tags and keeps visible text order', () => {
+    expect(toPlainText('a[b]bc[/b]d')).toBe('abcd');
+  });
+  it('unescapes [[b]] to [b]', () => {
+    expect(toPlainText('a[[b]]c')).toBe('a[b]c');
+  });
+  it('invalid color still yields inner text', () => {
+    expect(toPlainText('[color=red]x[/color]')).toBe('x');
+  });
+  it('keeps newlines', () => {
+    expect(toPlainText('a\n[b]b[/b]\n')).toBe('a\nb\n');
+  });
+  it('visibleLength equals plain length', () => {
+    expect(visibleLength('a[b]bc[/b]d')).toBe(4);
+  });
+  it('6000-deep [b] nesting yields inner text without stack overflow', () => {
+    const depth = 6000;
+    const src = '[b]'.repeat(depth) + 'x' + '[/b]'.repeat(depth);
+    expect(toPlainText(src)).toBe('x');
   });
 });
