@@ -1,4 +1,6 @@
 import { wrapTag, insertEmptyTag, replaceColor, truncateToVisible, escapeText } from '../src/core/transform';
+import { parse } from '../src/core/parser';
+import { toPlainText } from '../src/core/plain';
 
 describe('wrapTag', () => {
   const src = 'a[b]bc[/b]d';
@@ -45,6 +47,16 @@ describe('insertEmptyTag', () => {
     expect(r.source).toBe('a[color=#FF0000][/color]bc');
     expect(r.selection.start).toBe('a[color=#FF0000]'.length);
   });
+  it('value tag without value inserts [tag=][/tag] with cursor after =', () => {
+    const r = insertEmptyTag('abc', 1, 'color');
+    expect(r.source).toBe('a[color=][/color]bc');
+    expect(r.selection).toEqual({ start: 'a[color='.length, end: 'a[color='.length });
+  });
+  it('unknown tag returns input unchanged', () => {
+    const r = insertEmptyTag('abc', 2, 'nope');
+    expect(r.source).toBe('abc');
+    expect(r.selection).toEqual({ start: 2, end: 2 });
+  });
 });
 
 describe('replaceColor', () => {
@@ -57,6 +69,11 @@ describe('replaceColor', () => {
   it('wraps when not inside color', () => {
     const r = replaceColor('abc', { start: 0, end: 3 }, '#FF0000');
     expect(r!.source).toBe('[color=#FF0000]abc[/color]');
+  });
+  it('shifts selection by open-length delta when value length differs', () => {
+    const r = replaceColor('[color=#FF0000]x[/color]', { start: 15, end: 16 }, '#0F0');
+    expect(r!.source).toBe('[color=#0F0]x[/color]');
+    expect(r!.selection).toEqual({ start: 12, end: 13 });
   });
 });
 
@@ -72,10 +89,27 @@ describe('truncateToVisible', () => {
     const src = '[b]'.repeat(depth) + 'abc' + '[/b]'.repeat(depth);
     expect(truncateToVisible(src, 1)).toBe('[b]'.repeat(depth) + 'a' + '[/b]'.repeat(depth));
   });
+  it('never exceeds the visible limit and never leaves tags unclosed', () => {
+    const corpus = ['a[b]c]d[/b]ef', '😀x😀y', '[[x]]ab', '[b][color=#FF0000]ab[/color][/b]cd'];
+    for (const src of corpus) {
+      const full = parse(src).visibleLength;
+      for (let limit = 0; limit <= full + 2; limit++) {
+        const res = parse(truncateToVisible(src, limit));
+        expect(res.visibleLength).toBeLessThanOrEqual(limit);
+        expect(res.errors.some((e) => e.kind === 'unclosed')).toBe(false);
+      }
+    }
+  });
 });
 
 describe('escapeText', () => {
-  it('escapes brackets for safe re-insertion', () => {
-    expect(escapeText('a[b]c')).toBe('a[[b]]c');
+  it('doubles [ only, keeping stray ] single', () => {
+    expect(escapeText('a[b]c')).toBe('a[[b]c');
+    expect(escapeText('a]b')).toBe('a]b');
+  });
+  it('preserves visible length after parse round-trip', () => {
+    for (const s of ['a]b', 'a[b]c', '[x]', ']', 'plain', 'a]b[c]', 'x[y']) {
+      expect(toPlainText(escapeText(s)).length).toBe(s.length);
+    }
   });
 });

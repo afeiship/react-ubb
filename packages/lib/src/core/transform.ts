@@ -75,11 +75,15 @@ export function insertEmptyTag(
   cursor: number,
   tagName: string,
   value?: string,
-  _tags: TagSpec[] = DEFAULT_TAGS,
+  tags: TagSpec[] = DEFAULT_TAGS,
 ): TransformResult {
-  const open = value !== undefined ? `[${tagName}=${value}]` : `[${tagName}]`;
+  const spec = tags.find((t) => t.name === tagName);
+  if (!spec) return { source, selection: { start: cursor, end: cursor } };
+  // spec §6: a value-tag without a value inserts [tag=][/tag], cursor after '='
+  const bareValue = spec.valuePattern !== undefined && value === undefined;
+  const open = value !== undefined ? `[${tagName}=${value}]` : bareValue ? `[${tagName}=]` : `[${tagName}]`;
   const ins = `${open}[/${tagName}]`;
-  const at = cursor + open.length;
+  const at = cursor + open.length - (bareValue ? 1 : 0); // right after '='
   return {
     source: source.slice(0, cursor) + ins + source.slice(cursor),
     selection: { start: at, end: at },
@@ -109,8 +113,10 @@ export function replaceColor(
   return wrapTag(source, selection, 'color', hex, tags);
 }
 
+// Doubling '[' alone is sufficient: ']' only matters inside an escape that a
+// '[' started, so a stray ']' parses as a literal and visible length survives.
 export function escapeText(text: string): string {
-  return text.replace(/\[/g, '[[').replace(/\]/g, ']]');
+  return text.replace(/\[/g, '[[');
 }
 
 // Pending work for the iterative walk: emit a node, or emit a close token.
@@ -132,13 +138,43 @@ export function truncateToVisible(source: string, limit: number, tags: TagSpec[]
     if (cut) continue; // after the cut, skip nodes but keep closing open tags
     const node = frame.node;
     if (isTextNode(node)) {
-      for (const ch of node.text) {
-        if (count >= limit) {
-          cut = true;
-          break;
+      const budget = limit - count;
+      if (node.text.length <= budget) {
+        // whole node fits: copy its raw source span verbatim (escapes and
+        // stray brackets preserved, no re-escaping corruption)
+        out += source.slice(node.range[0], node.range[1]);
+        count += node.text.length;
+        if (count >= limit) cut = true;
+      } else {
+        // cut lands mid-node: walk raw in lockstep with rendered text.
+        // '[[ ... ]]' escape pairs render as '[ ... ]'; plain raw chars map
+        // 1:1 to rendered UTF-16 units (matches parse().visibleLength).
+        const raw = source.slice(node.range[0], node.range[1]);
+        let ri = 0;
+        let used = 0;
+        while (ri < raw.length && used < budget) {
+          if (raw[ri] === '[' && raw[ri + 1] === '[') {
+            const close = raw.indexOf(']]', ri + 2);
+            const contentLen = (close === -1 ? raw.length : close) - (ri + 2);
+            if (close !== -1 && 2 + contentLen <= budget - used) {
+              ri = close + 2; // whole escape fits
+              used += 2 + contentLen;
+            } else {
+              // partial escape: '[[' renders '[' then content maps 1:1; the
+              // split tail degrades to literal text via unclosed-escape
+              const take = Math.min(budget - used - 1, contentLen);
+              ri += 2 + take;
+              used += 1 + take;
+              break;
+            }
+          } else {
+            ri += 1;
+            used += 1;
+          }
         }
-        out += ch === '[' ? '[[' : ch === ']' ? ']]' : ch;
-        count++;
+        out += raw.slice(0, ri);
+        count += used;
+        cut = true;
       }
     } else {
       out += node.value !== undefined ? `[${node.type}=${node.value}]` : `[${node.type}]`;
