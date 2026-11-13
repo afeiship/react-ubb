@@ -211,9 +211,9 @@ describe('parser', () => {
     const r = parse('a[b]b[i]c[/i][/b]d');
     expect(types(r.ast)).toEqual(['text', 'b', 'text', 'i', 'text', 'text']);
     const b = r.ast[1];
-    expect(b.range).toEqual([1, 15]);
-    expect(b.contentRange).toEqual([4, 11]);
-    expect(r.visibleLength).toBe(5); // abcd... wait: a+b+c+d = 4
+    expect(b.range).toEqual([1, 17]);
+    expect(b.contentRange).toEqual([4, 13]);
+    expect(r.visibleLength).toBe(4); // a+b+c+d
   });
 
   it('uppercase tags are case-insensitive', () => {
@@ -231,7 +231,7 @@ describe('parser', () => {
   it('value tag without declared pattern falls back to text', () => {
     const r = parse('[b=x]y[/b]');
     expect(r.ast[0].type).toBe('text');
-    expect(r.errors).toEqual([]);
+    expect(r.errors[0].kind).toBe('mismatched'); // [b=x] degraded to text, [/b] is stray
   });
 
   it('valid color value passes and lands on node.color', () => {
@@ -278,7 +278,7 @@ describe('parser', () => {
     // [b][i]x[/b][/i] → [/b] closes i implicitly then b; [/i] becomes stray literal
     const r = parse('[b][i]x[/b][/i]');
     expect(types(r.ast)).toEqual(['b', 'i', 'text', 'text']);
-    expect(r.visibleLength).toBe(6); // x + [/i]
+    expect(r.visibleLength).toBe(5); // x + [/i]
     expect(r.errors.some((e) => e.kind === 'mismatched')).toBe(true);
   });
 
