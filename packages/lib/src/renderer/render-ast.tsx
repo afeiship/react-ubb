@@ -24,6 +24,9 @@ export function renderAst(nodes: UbbNode[], plugins: CustomTag[] = [], prefix = 
     const key = `${prefix}${idx}`;
     if (isTextNode(node)) return <Fragment key={key}>{withLines(node.text)}</Fragment>;
     const children = renderAst(node.children, plugins, `${key}-`);
+    // plugin render overrides builtin rendering for ANY tag name (design §4)
+    const pluginRender = plugins.find((p) => p.name === node.type)?.render;
+    if (pluginRender) return <Fragment key={key}>{pluginRender({ children, node })}</Fragment>;
     switch (node.type) {
       case 'b':
         return <strong key={key}>{children}</strong>;
@@ -37,19 +40,10 @@ export function renderAst(nodes: UbbNode[], plugins: CustomTag[] = [], prefix = 
         ) : (
           <Fragment key={key}>{children}</Fragment>
         );
-      case 'blank': {
-        const plugin = plugins.find((p) => p.name === 'blank');
-        if (plugin?.render) return <Fragment key={key}>{plugin.render({ children, node })}</Fragment>;
+      case 'blank':
         return <span key={key} className="react-ubb__blank" style={{ minWidth: blankWidth(node) }} />;
-      }
-      default: {
-        const plugin = plugins.find((p) => p.name === node.type);
-        return plugin?.render ? (
-          <Fragment key={key}>{plugin.render({ children, node })}</Fragment>
-        ) : (
-          <Fragment key={key}>{children}</Fragment>
-        );
-      }
+      default:
+        return <Fragment key={key}>{children}</Fragment>;
     }
   });
 }

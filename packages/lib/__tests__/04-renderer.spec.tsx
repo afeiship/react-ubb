@@ -74,4 +74,11 @@ describe('UbbView', () => {
     render(<UbbView source={'[blank]答案[/blank]'} plugins={[blank2]} />);
     expect(screen.getByTestId('bk').textContent).toBe('答案');
   });
+
+  it('plugin named b overrides builtin strong rendering', () => {
+    const b2 = definePlugin({ name: 'b', render: ({ children }) => <b data-testid="pb">{children}</b> });
+    const { container } = render(<UbbView source={'[b]x[/b]'} plugins={[b2]} />);
+    expect(screen.getByTestId('pb').textContent).toBe('x');
+    expect(container.querySelector('strong')).not.toBeInTheDocument();
+  });
 });
