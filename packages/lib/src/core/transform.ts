@@ -14,18 +14,19 @@ export interface TransformResult {
 
 type TagNode = Extract<UbbNode, { children: UbbNode[] }>;
 
-// Innermost node of the given tag name whose full span (incl. tag shells)
-// contains the selection. Iterative pre-order DFS with reverse-pushed children:
-// a deeper containing node is popped after any shallower one, so the last
-// match wins. Pruning is safe: descendant ranges nest inside ancestor ranges.
+// Innermost node of the given tag name whose contentRange (excluding tag
+// shells) fully contains the selection — spec §6 wrap/unwrap criterion.
+// Iterative pre-order DFS with reverse-pushed children: a deeper containing
+// node is popped after any shallower one, so the last match wins. Pruning is
+// safe: descendant content ranges nest inside ancestor content ranges.
 function findEnclosing(ast: UbbNode[], name: string, sel: Sel): TagNode | undefined {
   let found: TagNode | undefined;
   const stack: UbbNode[] = ast.slice().reverse();
   while (stack.length) {
     const node = stack.pop()!;
     if (isTextNode(node)) continue;
-    const [rs, re] = node.range;
-    if (rs <= sel.start && sel.end <= re) {
+    const [cs, ce] = node.contentRange;
+    if (cs <= sel.start && sel.end <= ce) {
       if (node.type === name) found = node;
       for (let k = node.children.length - 1; k >= 0; k--) stack.push(node.children[k]);
     }

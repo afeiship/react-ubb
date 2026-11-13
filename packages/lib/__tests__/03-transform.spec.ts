@@ -50,9 +50,9 @@ describe('insertEmptyTag', () => {
 describe('replaceColor', () => {
   it('replaces value in place, no nesting (FR-18 / AC-03)', () => {
     const src = '[b][color=#FF0000]abc[/color][/b]';
-    const r = replaceColor(src, { start: 17, end: 20 }, '#00FF00');
+    const r = replaceColor(src, { start: 18, end: 20 }, '#00FF00');
     expect(r!.source).toBe('[b][color=#00FF00]abc[/color][/b]');
-    expect(r!.selection).toEqual({ start: 17, end: 20 });
+    expect(r!.selection).toEqual({ start: 18, end: 20 });
   });
   it('wraps when not inside color', () => {
     const r = replaceColor('abc', { start: 0, end: 3 }, '#FF0000');
