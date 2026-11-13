@@ -177,9 +177,11 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
     }
   };
 
-  const handleInput = (e: FormEvent<HTMLTextAreaElement>) => {
-    const ta = e.currentTarget;
-    let next: string = ta.value;
+  // Clamp DOM value to maxLength by visible length; returns the (possibly
+  // rewritten) value. Never call mid-composition — rewriting ta.value breaks
+  // the IME session; compositionEnd re-runs this instead.
+  const clampToLimit = (ta: HTMLTextAreaElement): string => {
+    let next = ta.value;
     if (maxLength != null) {
       const r = parse(next, tags);
       if (r.visibleLength > maxLength) {
@@ -191,6 +193,20 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
         ta.setSelectionRange(clamp(s0), clamp(s1));
       }
     }
+    return next;
+  };
+
+  const syncValue = (next: string, ta: HTMLTextAreaElement) => {
+    setSel(getSelection(ta));
+    if (!isControlled) setInnerValue(next);
+    onChange?.(next, computeMeta(next, getSelection(ta)));
+  };
+
+  const handleInput = (e: FormEvent<HTMLTextAreaElement>) => {
+    const ta = e.currentTarget;
+    const pre = { source, selection: getSelection(ta) };
+    const next = composingRef.current ? ta.value : clampToLimit(ta);
+    if (customUndoRef.current) undoRef.current.push(pre, { mergeWithinMs: 800 });
     if (!isControlled) setInnerValue(next);
     onChange?.(next, computeMeta(next, getSelection(ta)));
   };
@@ -249,6 +265,7 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   };
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (composingRef.current || e.nativeEvent.isComposing) return;
     if (readOnly || disabled) return;
     const ev = e.nativeEvent;
     if (matchShortcut(ev, 'mod+b')) {
@@ -261,13 +278,8 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
       handleTagClick('i');
       return;
     }
-    for (const p of plugins ?? []) {
-      if (p.shortcut && matchShortcut(ev, p.shortcut)) {
-        e.preventDefault();
-        handleTagClick(p.name);
-        return;
-      }
-    }
+    // undo/redo before the plugin loop: a plugin declaring 'mod+z' must not
+    // swallow the undo shortcut
     if (customUndoRef.current) {
       if (matchShortcut(ev, 'mod+z')) {
         e.preventDefault();
@@ -279,6 +291,14 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
         e.preventDefault();
         const snap = undoRef.current.redo({ source, selection: currentSel() });
         if (snap) applySnapshot(snap);
+        return;
+      }
+    }
+    for (const p of plugins ?? []) {
+      if (p.shortcut && matchShortcut(ev, p.shortcut)) {
+        e.preventDefault();
+        handleTagClick(p.name);
+        return;
       }
     }
   };
@@ -286,7 +306,7 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
   const handlePaste = (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
     if (readOnly || disabled || composingRef.current) return;
     e.preventDefault();
-    let text = e.clipboardData.getData('text/plain');
+    let text = e.clipboardData?.getData('text/plain') ?? '';
     if (stripPaste) text = escapeText(toPlainText(text, tags));
     const s = currentSel();
     const next = source.slice(0, s.start) + text + source.slice(s.end);
@@ -385,6 +405,14 @@ function UbbEditorBase(props: UbbEditorProps, ref: ForwardedRef<UbbEditorRef>) {
             }}
             onCompositionEnd={() => {
               composingRef.current = false;
+              // Chrome fires input → compositionend (input was skipped above);
+              // Safari fires compositionend → input (the later input re-clamps
+              // idempotently). Clamp here so the limit holds either way.
+              const taEl = taRef.current;
+              if (!taEl || maxLength == null) return;
+              const before = taEl.value;
+              const next = clampToLimit(taEl);
+              if (next !== before) syncValue(next, taEl);
             }}
             onSelect={(e) => setSel(getSelection(e.currentTarget))}
           />

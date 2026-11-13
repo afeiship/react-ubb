@@ -41,6 +41,14 @@ describe('UndoStack', () => {
     s.push({ source: 'c', selection: { start: 0, end: 0 } });
     expect(s.redo({ source: 'c', selection: { start: 0, end: 0 } })).toBeUndefined();
   });
+  it('typing pushes within the merge window collapse to one undo step', () => {
+    const s = new UndoStack();
+    s.push({ source: 'a', selection: { start: 0, end: 0 } }); // transform
+    s.push({ source: 'ab', selection: { start: 0, end: 0 } }, { mergeWithinMs: 800 }); // typing 1
+    s.push({ source: 'abc', selection: { start: 0, end: 0 } }, { mergeWithinMs: 800 }); // typing 2 — collapsed
+    const snap = s.undo({ source: 'abcd', selection: { start: 0, end: 0 } });
+    expect(snap!.source).toBe('ab'); // one step back = pre-typing state
+  });
   it('caps history at 50', () => {
     const s = new UndoStack();
     for (let i = 0; i < 55; i++) s.push({ source: String(i), selection: { start: 0, end: 0 } });
@@ -184,5 +192,35 @@ describe('editor interactions', () => {
     const { container } = render(<UbbEditor defaultValue="" />);
     fireEvent.input(ta(), { target: { value: '[b]x' } });
     expect(container.querySelector('.react-ubb__warn')).toBeInTheDocument();
+  });
+
+  it('FR-26: maxLength clamp deferred during IME composition, applied on compositionEnd', () => {
+    render(<UbbEditor defaultValue="ab" maxLength={4} />);
+    fireEvent.compositionStart(ta());
+    fireEvent.input(ta(), { target: { value: 'abcdef' } });
+    expect(ta().value).toBe('abcdef'); // NOT truncated mid-composition
+    fireEvent.compositionEnd(ta());
+    expect(ta().value).toBe('abcd');
+  });
+
+  it('undo collapses typing burst: wrap → type → mod+z returns to post-wrap state', () => {
+    render(<UbbEditor defaultValue="abc" />);
+    select(0, 3);
+    fireEvent.click(screen.getByRole('button', { name: '加粗' }));
+    expect(ta().value).toBe('[b]abc[/b]');
+    fireEvent.input(ta(), { target: { value: '[b]abc[/b]XY' } });
+    fireEvent.keyDown(ta(), { key: 'z', ctrlKey: true });
+    expect(ta().value).toBe('[b]abc[/b]');
+  });
+
+  it('redo after typing following undo is a no-op (no silent data loss)', () => {
+    render(<UbbEditor defaultValue="abc" />);
+    select(0, 3);
+    fireEvent.click(screen.getByRole('button', { name: '加粗' }));
+    fireEvent.keyDown(ta(), { key: 'z', ctrlKey: true });
+    expect(ta().value).toBe('abc');
+    fireEvent.input(ta(), { target: { value: 'abcXY' } });
+    fireEvent.keyDown(ta(), { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(ta().value).toBe('abcXY');
   });
 });

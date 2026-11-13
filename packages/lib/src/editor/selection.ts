@@ -45,22 +45,35 @@ export function replaceRange(
 }
 
 export class UndoStack {
-  private past: Snapshot[] = [];
-  private future: Snapshot[] = [];
-  push(s: Snapshot): void {
-    this.past.push(s);
+  private past: { snap: Snapshot; isTyping: boolean; at: number }[] = [];
+  private future: { snap: Snapshot; isTyping: boolean; at: number }[] = [];
+  // Typing pushes (mergeWithinMs set) within the window collapse into one undo
+  // step: the top (earliest pre-state of the burst) is kept, later ones skip.
+  push(s: Snapshot, opts?: { mergeWithinMs?: number }): void {
+    const top = this.past[this.past.length - 1];
+    const window = opts?.mergeWithinMs;
+    if (
+      window != null &&
+      top &&
+      top.isTyping &&
+      Date.now() - top.at < window
+    ) {
+      this.future = [];
+      return;
+    }
+    this.past.push({ snap: s, isTyping: window != null, at: Date.now() });
     if (this.past.length > 50) this.past.shift();
     this.future = [];
   }
   undo(current: Snapshot): Snapshot | undefined {
-    const s = this.past.pop();
-    if (s) this.future.push(current);
-    return s;
+    const e = this.past.pop();
+    if (e) this.future.push({ snap: current, isTyping: false, at: 0 });
+    return e?.snap;
   }
   redo(current: Snapshot): Snapshot | undefined {
-    const s = this.future.pop();
-    if (s) this.past.push(current);
-    return s;
+    const e = this.future.pop();
+    if (e) this.past.push({ snap: current, isTyping: false, at: 0 });
+    return e?.snap;
   }
 }
 
